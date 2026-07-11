@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProducersCenter Backend</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>ProducersCenter Backend</h1>
+        <p>YouTube stream resolver, proxy scoring, and bot-bypass diagnostics.</p>
+      </div>
+      <button id="refresh">Refresh</button>
+    </header>
+
+    <main>
+      <section class="grid stats" id="stats"></section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Stream resolver</h2>
+            <p>Resolve direct audio stream URL through direct yt-dlp first, then verified proxies.</p>
+          </div>
+        </div>
+        <div class="row">
+          <input id="youtube-url" placeholder="https://youtu.be/..." />
+          <button id="resolve-stream">Resolve</button>
+        </div>
+        <pre id="stream-output"></pre>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Proxy import</h2>
+            <p>Add proxy lists, fetch sources, then validate candidates.</p>
+          </div>
+          <div class="actions">
+            <button id="add-defaults">Add defaults</button>
+            <button id="fetch-sources">Fetch sources</button>
+            <button id="check-batch">Check 20 new</button>
+          </div>
+        </div>
+        <textarea id="proxy-input" placeholder="host:port or socks5://host:port, one per line"></textarea>
+        <div class="row">
+          <select id="proxy-protocol">
+            <option value="auto">auto</option>
+            <option value="http">http</option>
+            <option value="socks4">socks4</option>
+            <option value="socks5">socks5</option>
+          </select>
+          <button id="import-proxies">Import proxies</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Best proxies</h2>
+            <p>Verified proxies ordered by score and latency.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Proxy</th>
+                <th>Status</th>
+                <th>Score</th>
+                <th>Latency</th>
+                <th>YT ok/fail</th>
+                <th>Error</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="proxy-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+
