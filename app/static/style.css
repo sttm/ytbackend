@@ -91,6 +91,16 @@ main {
   align-items: center;
 }
 
+.panel-header.compact {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.panel-header.compact h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
 .actions,
 .row {
   display: flex;
@@ -114,8 +124,29 @@ button {
   padding: 9px 12px;
 }
 
-button:hover {
+button:hover,
+.button-link:hover {
   border-color: var(--blue);
+}
+
+button.danger {
+  border-color: rgba(255, 104, 104, 0.45);
+  color: var(--red);
+}
+
+button.danger:hover {
+  border-color: var(--red);
+}
+
+.button-link {
+  border: 1px solid var(--line);
+  background: #11141a;
+  color: var(--text);
+  border-radius: 6px;
+  font: inherit;
+  padding: 9px 12px;
+  text-decoration: none;
+  white-space: nowrap;
 }
 
 input,
@@ -126,6 +157,22 @@ select {
 
 input {
   width: min(720px, 100%);
+}
+
+input[type="checkbox"] {
+  width: auto;
+  height: auto;
+}
+
+input[type="number"] {
+  width: 90px;
+}
+
+.checkline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
 }
 
 textarea {
@@ -145,10 +192,41 @@ pre {
   padding: 12px;
 }
 
+.log-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #101319;
+}
+
+#activity-log {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding-left: 22px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+#activity-log li strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .table-wrap {
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
 }
 
 table {
@@ -199,4 +277,3 @@ th {
     flex-direction: column;
   }
 }
-

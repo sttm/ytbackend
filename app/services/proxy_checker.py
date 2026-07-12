@@ -27,7 +27,7 @@ async def _http_get(proxy_url: str, url: str, timeout: int) -> tuple[bool, int, 
     try:
         session, kwargs = await _session_for(proxy_url)
         async with session:
-            async with session.get(url, timeout=timeout, **kwargs) as response:
+            async with session.get(url, timeout=timeout, ssl=False, **kwargs) as response:
                 latency = int((time.perf_counter() - started) * 1000)
                 return 200 <= response.status < 400, latency, f"HTTP {response.status}"
     except Exception as error:
@@ -92,3 +92,14 @@ async def check_proxy(proxy_url: str) -> dict:
         "checked_at": datetime.utcnow(),
     }
 
+
+async def check_proxy_fast(proxy_url: str, url: str = PING_URL, timeout: int = 5) -> dict:
+    ok, latency_ms, error = await _http_get(proxy_url, url, timeout)
+    return {
+        "proxy_url": proxy_url,
+        "status": "verified" if ok else "dead",
+        "layer": "fast-ping",
+        "latency_ms": latency_ms,
+        "error": "" if ok else error,
+        "checked_at": datetime.utcnow(),
+    }

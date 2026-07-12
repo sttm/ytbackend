@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8787"
     proxy_check_concurrency: int = 30
+    stream_resolve_concurrency: int = 1
     proxy_attempts: int = 8
     stream_cache_hours: int = 6
     direct_first: bool = True
@@ -24,4 +25,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

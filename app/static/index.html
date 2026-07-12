@@ -36,13 +36,18 @@
         <div class="panel-header">
           <div>
             <h2>Proxy import</h2>
-            <p>Add proxy lists, fetch sources, then validate candidates.</p>
+            <p>Add proxy lists, fetch .txt sources, check candidates, and keep only useful proxies.</p>
           </div>
           <div class="actions">
             <button id="add-defaults">Add defaults</button>
             <button id="fetch-sources">Fetch sources</button>
             <button id="check-batch">Check 20 new</button>
+            <button id="clear-proxies" class="danger">Clear table</button>
           </div>
+        </div>
+        <div class="row">
+          <input id="proxy-url-input" placeholder="https://example.com/proxies.txt" />
+          <button id="import-proxy-url">Import .txt URL</button>
         </div>
         <textarea id="proxy-input" placeholder="host:port or socks5://host:port, one per line"></textarea>
         <div class="row">
@@ -52,7 +57,24 @@
             <option value="socks4">socks4</option>
             <option value="socks5">socks5</option>
           </select>
+          <label class="checkline">
+            <input id="check-before-add" type="checkbox" checked />
+            Check before add
+          </label>
+          <select id="check-mode">
+            <option value="fast" selected>fast Google ping</option>
+            <option value="deep">deep YouTube + yt-dlp</option>
+          </select>
+          <input id="check-limit" type="number" min="1" max="1000" value="100" />
           <button id="import-proxies">Import proxies</button>
+        </div>
+        <pre id="import-output"></pre>
+        <div class="log-panel">
+          <div class="panel-header compact">
+            <h3>Activity log</h3>
+            <button id="clear-log" type="button">Clear log</button>
+          </div>
+          <ol id="activity-log"></ol>
         </div>
       </section>
 
@@ -61,6 +83,23 @@
           <div>
             <h2>Best proxies</h2>
             <p>Verified proxies ordered by score and latency.</p>
+          </div>
+          <div class="actions">
+            <select id="status-filter">
+              <option value="">all</option>
+              <option value="new">new</option>
+              <option value="verified">verified</option>
+              <option value="dead">dead</option>
+              <option value="youtube_blocked">youtube_blocked</option>
+              <option value="youtube_unreachable">youtube_unreachable</option>
+              <option value="timeout">timeout</option>
+            </select>
+            <select id="page-size">
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+            </select>
+            <a class="button-link" href="/api/client-proxies?format=txt&limit=500" target="_blank" rel="noreferrer">Client txt</a>
           </div>
         </div>
         <div class="table-wrap">
@@ -72,6 +111,7 @@
                 <th>Status</th>
                 <th>Score</th>
                 <th>Latency</th>
+                <th>Resolve</th>
                 <th>YT ok/fail</th>
                 <th>Error</th>
                 <th></th>
@@ -80,10 +120,14 @@
             <tbody id="proxy-table"></tbody>
           </table>
         </div>
+        <div class="pagination">
+          <button id="prev-page">Previous</button>
+          <span id="page-info">Page 1</span>
+          <button id="next-page">Next</button>
+        </div>
       </section>
     </main>
 
     <script src="/static/app.js"></script>
   </body>
 </html>
-

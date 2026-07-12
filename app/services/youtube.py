@@ -79,3 +79,49 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
         "filesize": best.get("filesize") or best.get("filesize_approx") or 0,
     }
 
+
+def search_youtube(query: str, limit: int = 10) -> list[dict]:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "skip_download": True,
+        "noplaylist": True,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
+    entries = info.get("entries") or []
+    return [
+        {
+            "id": entry.get("id"),
+            "title": entry.get("title") or entry.get("id") or "",
+            "artist": entry.get("uploader") or entry.get("channel") or "",
+            "duration": entry.get("duration"),
+            "thumbnail": entry.get("thumbnail") or small_thumbnail(entry),
+            "url": entry.get("url") if str(entry.get("url") or "").startswith("http") else f"https://www.youtube.com/watch?v={entry.get('id')}",
+        }
+        for entry in entries
+        if entry.get("id")
+    ]
+
+
+def extract_playlist_items(url: str, limit: int = 100) -> list[dict]:
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "skip_download": True,
+        "playlistend": limit,
+    }
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    entries = info.get("entries") or []
+    return [
+        {
+            "id": entry.get("id"),
+            "title": entry.get("title") or entry.get("id") or "",
+            "url": entry.get("url") if str(entry.get("url") or "").startswith("http") else f"https://www.youtube.com/watch?v={entry.get('id')}",
+        }
+        for entry in entries
+        if entry.get("id")
+    ]

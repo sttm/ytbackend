@@ -36,6 +36,7 @@ def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
     status = result["status"]
     proxy.status = status
     proxy.latency_ms = result.get("latency_ms") or proxy.latency_ms
+    proxy.download_ms = result.get("download_ms") or proxy.download_ms
     proxy.last_error = (result.get("error") or "")[:4000]
     proxy.last_checked_at = now
     proxy.updated_at = now
@@ -47,7 +48,7 @@ def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
         proxy.youtube_success += 1
         proxy.fail_count = 0
         proxy.last_success_at = now
-        latency_penalty = max(proxy.latency_ms, 1)
+        latency_penalty = max(proxy.latency_ms or proxy.download_ms, 1)
         proxy.score = min(1000, 500 + proxy.youtube_success * 25 + int(100000 / latency_penalty))
         proxy.cooldown_until = None
     elif status in {"youtube_blocked", "captcha"}:
@@ -87,4 +88,3 @@ def best_proxies(db: Session, limit: int = 20) -> list[Proxy]:
         .limit(limit)
         .all()
     )
-

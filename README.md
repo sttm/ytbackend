@@ -40,12 +40,27 @@ GET  /api/stream?url=<youtube_url>&use_proxy=true
 GET  /api/proxies
 GET  /api/proxies/top
 POST /api/proxies/import
+POST /api/proxies/import-url
 POST /api/proxies/{id}/check
 POST /api/proxies/check-batch?limit=20&status=new
+GET  /api/client-proxies?format=json&limit=100
+GET  /api/client-proxies?format=txt&limit=100
 GET  /api/proxy-sources
 POST /api/proxy-sources/defaults
 POST /api/proxy-sources/fetch
 ```
+
+`/api/proxies/import` and `/api/proxies/import-url` support:
+
+```json
+{
+  "check_before_add": true,
+  "check_limit": 100
+}
+```
+
+When `check_before_add` is enabled, the backend checks each proxy before saving it.
+Dead proxies are skipped, duplicates are counted, and only verified proxies are stored.
 
 Proxy checks use three layers:
 

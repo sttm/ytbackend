@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.models import StreamCache
+from app.services.limits import stream_resolve_semaphore
 from app.services.proxy_store import apply_check_result, best_proxies
 from app.services.proxy_utils import classify_error
 from app.services.youtube import extract_best_audio, extract_video_id
@@ -87,7 +89,12 @@ def _response_from_result(result: dict, cached: bool, proxy_used: str = "") -> d
     }
 
 
-def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
+async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
+    async with stream_resolve_semaphore:
+        return _resolve_stream_locked(db, youtube_url, use_proxy=use_proxy, force_refresh=force_refresh)
+
+
+def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
     video_id = extract_video_id(youtube_url)
     if not force_refresh:
         cached = _cached_stream(db, video_id)
@@ -108,13 +115,16 @@ def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_
 
     for proxy in best_proxies(db, settings.proxy_attempts):
         try:
+            started = time.perf_counter()
             result = extract_best_audio(youtube_url, proxy.proxy_url)
+            resolve_ms = int((time.perf_counter() - started) * 1000)
             apply_check_result(
                 db,
                 proxy,
                 {
                     "status": "verified",
-                    "latency_ms": proxy.latency_ms,
+                    "latency_ms": resolve_ms,
+                    "download_ms": resolve_ms,
                     "error": "",
                 },
             )
@@ -133,4 +143,3 @@ def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_
             )
 
     raise RuntimeError("No YouTube stream resolved. " + " | ".join(errors[-5:]))
-
