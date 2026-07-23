@@ -221,16 +221,20 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(ssl=ssl_context)
+    upstream_headers = {
+        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
+        "Accept": "audio/*,*/*;q=0.8",
+    }
     session = aiohttp.ClientSession(timeout=timeout, connector=connector)
     try:
-        response = await session.get(stream_url)
+        response = await session.get(stream_url, headers=upstream_headers)
         response.raise_for_status()
-    except Exception:
+    except Exception as error:
         await session.close()
-        raise
+        raise HTTPException(status_code=502, detail=f"audio download upstream failed: {error}") from error
 
     ext = metadata.get("ext") or "m4a"
-    media_type = "audio/webm" if ext == "webm" else "audio/mp4"
+    media_type = "audio/webm" if ext == "webm" else "audio/mpeg" if ext == "mp3" else "audio/mp4"
     headers = {
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
