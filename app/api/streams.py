@@ -3,6 +3,7 @@ import asyncio
 
 import aiohttp
 import certifi
+from aiohttp_socks import ProxyConnector
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -17,6 +18,32 @@ from app.services.youtube import extract_playlist_items, extract_playlist_metada
 
 router = APIRouter()
 settings = get_settings()
+
+
+def stream_fetch_headers(range_header: str | None = None) -> dict[str, str]:
+    headers = {
+        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
+        "Accept": "audio/*,*/*;q=0.8",
+    }
+    if range_header:
+        headers["Range"] = range_header
+    return headers
+
+
+def client_session_for_proxy(proxy_url: str | None) -> tuple[aiohttp.ClientSession, dict[str, str]]:
+    timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
+    normalized_proxy = (proxy_url or "").strip()
+    request_kwargs: dict[str, str] = {}
+
+    if normalized_proxy.startswith(("socks4://", "socks5://", "socks5h://")):
+        connector = ProxyConnector.from_url(normalized_proxy)
+        return aiohttp.ClientSession(timeout=timeout, connector=connector), request_kwargs
+
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+    if normalized_proxy.startswith(("http://", "https://")):
+        request_kwargs["proxy"] = normalized_proxy
+    return aiohttp.ClientSession(timeout=timeout, connector=connector), request_kwargs
 
 
 @router.get("/api/stream")
@@ -143,17 +170,14 @@ async def playback(
 
     range_header = request.headers.get("range")
 
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(ssl=ssl_context)
-    upstream_headers = {"Range": range_header} if range_header else {}
-    session = aiohttp.ClientSession(timeout=timeout, connector=connector)
+    upstream_headers = stream_fetch_headers(range_header)
+    session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
     try:
-        response = await session.get(stream_url, headers=upstream_headers)
+        response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
         response.raise_for_status()
-    except Exception:
+    except Exception as error:
         await session.close()
-        raise
+        raise HTTPException(status_code=502, detail=f"audio playback upstream failed: {error}") from error
 
     ext = metadata.get("ext") or "m4a"
     media_type = "audio/webm" if ext == "webm" else "audio/mpeg" if ext == "mp3" else "audio/mp4"
@@ -194,16 +218,7 @@ async def playback_compat(
 
 @router.post("/download")
 async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
-    if payload.stream_url:
-        metadata = {
-            "stream_url": payload.stream_url,
-            "video_id": payload.video_id or "",
-            "title": payload.title or "online-audio",
-            "uploader": payload.artist or "",
-            "ext": payload.ext or "m4a",
-            "filesize": payload.filesize or 0,
-        }
-    else:
+    if payload.url:
         try:
             metadata = await resolve_stream(
                 db,
@@ -213,21 +228,27 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
             )
         except Exception as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
+    elif payload.stream_url:
+        metadata = {
+            "stream_url": payload.stream_url,
+            "video_id": payload.video_id or "",
+            "title": payload.title or "online-audio",
+            "uploader": payload.artist or "",
+            "ext": payload.ext or "m4a",
+            "filesize": payload.filesize or 0,
+            "proxy_used": "",
+        }
+    else:
+        raise HTTPException(status_code=400, detail="url or stream_url is required")
 
     stream_url = metadata.get("stream_url")
     if not stream_url:
         raise HTTPException(status_code=502, detail="stream URL was not resolved")
 
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
-    connector = aiohttp.TCPConnector(ssl=ssl_context)
-    upstream_headers = {
-        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
-        "Accept": "audio/*,*/*;q=0.8",
-    }
-    session = aiohttp.ClientSession(timeout=timeout, connector=connector)
+    upstream_headers = stream_fetch_headers()
+    session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
     try:
-        response = await session.get(stream_url, headers=upstream_headers)
+        response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
         response.raise_for_status()
     except Exception as error:
         await session.close()
