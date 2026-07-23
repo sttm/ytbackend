@@ -1,5 +1,6 @@
 import ssl
 import asyncio
+import time
 
 import aiohttp
 import certifi
@@ -71,6 +72,25 @@ def mark_proxy_media_failure(db: Session, proxy_url: str | None, error: Exceptio
             "status": status,
             "latency_ms": proxy.latency_ms,
             "error": f"media fetch failed: {text}",
+        },
+    )
+
+
+def mark_proxy_media_success(db: Session, proxy_url: str | None, elapsed_ms: int) -> None:
+    normalized_proxy = (proxy_url or "").strip()
+    if not normalized_proxy:
+        return
+    proxy = db.query(Proxy).filter(Proxy.proxy_url == normalized_proxy).first()
+    if not proxy:
+        return
+    apply_check_result(
+        db,
+        proxy,
+        {
+            "status": "verified",
+            "latency_ms": proxy.latency_ms,
+            "download_ms": elapsed_ms,
+            "error": "",
         },
     )
 
@@ -189,7 +209,7 @@ async def playback(
     request: Request,
     url: str = Query(...),
     use_proxy: bool = True,
-    force_refresh: bool = True,
+    force_refresh: bool = False,
     db: Session = Depends(get_db),
 ):
     try:
@@ -212,8 +232,10 @@ async def playback(
     for attempt in range(2):
         session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
         try:
+            started = time.perf_counter()
             response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
             response.raise_for_status()
+            mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
             break
         except Exception as error:
             last_error = error
@@ -264,7 +286,7 @@ async def playback_compat(
     request: Request,
     url: str = Query(...),
     use_proxy: bool = True,
-    force_refresh: bool = True,
+    force_refresh: bool = False,
     db: Session = Depends(get_db),
 ):
     return await playback(request, url, use_proxy, force_refresh, db)
@@ -278,7 +300,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
                 db,
                 payload.url,
                 use_proxy=payload.use_proxy,
-                force_refresh=True,
+                force_refresh=payload.force_refresh,
             )
         except TimeoutError as error:
             raise HTTPException(status_code=504, detail="Download stream resolve timed out. Try again or refresh the proxy pool.") from error
@@ -308,8 +330,10 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
     for attempt in range(2):
         session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
         try:
+            started = time.perf_counter()
             response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
             response.raise_for_status()
+            mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
             break
         except Exception as error:
             last_error = error
