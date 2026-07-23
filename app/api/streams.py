@@ -9,8 +9,11 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models import Proxy
 from app.schemas import YoutubePlaylistRequest, YoutubeSearchRequest, YoutubeUrlRequest
 from app.config import get_settings
+from app.services.proxy_store import apply_check_result
+from app.services.proxy_utils import classify_error
 from app.services.stream_service import resolve_stream
 from app.services.search_cache import cached_search_items, store_search_items
 from app.services.track_metadata import enrich_items_with_cached_metadata
@@ -44,6 +47,32 @@ def client_session_for_proxy(proxy_url: str | None) -> tuple[aiohttp.ClientSessi
     if normalized_proxy.startswith(("http://", "https://")):
         request_kwargs["proxy"] = normalized_proxy
     return aiohttp.ClientSession(timeout=timeout, connector=connector), request_kwargs
+
+
+def mark_proxy_media_failure(db: Session, proxy_url: str | None, error: Exception) -> None:
+    normalized_proxy = (proxy_url or "").strip()
+    if not normalized_proxy:
+        return
+    proxy = db.query(Proxy).filter(Proxy.proxy_url == normalized_proxy).first()
+    if not proxy:
+        return
+    kind = classify_error(error)
+    text = str(error)
+    if kind == "timeout":
+        status = "timeout"
+    elif kind in {"youtube_bot", "youtube_rate_limit", "captcha"} or "403" in text or "forbidden" in text.lower():
+        status = "youtube_blocked"
+    else:
+        status = "dead"
+    apply_check_result(
+        db,
+        proxy,
+        {
+            "status": status,
+            "latency_ms": proxy.latency_ms,
+            "error": f"media fetch failed: {text}",
+        },
+    )
 
 
 @router.get("/api/stream")
@@ -177,13 +206,32 @@ async def playback(
     range_header = request.headers.get("range")
 
     upstream_headers = stream_fetch_headers(range_header)
-    session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
-    try:
-        response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
-        response.raise_for_status()
-    except Exception as error:
-        await session.close()
-        raise HTTPException(status_code=502, detail=f"audio playback upstream failed: {error}") from error
+    response = None
+    session = None
+    last_error: Exception | None = None
+    for attempt in range(2):
+        session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
+        try:
+            response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
+            response.raise_for_status()
+            break
+        except Exception as error:
+            last_error = error
+            await session.close()
+            mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
+            if attempt == 0 and use_proxy:
+                try:
+                    metadata = await resolve_stream(db, url, use_proxy=True, force_refresh=True)
+                    stream_url = metadata.get("stream_url")
+                    if stream_url:
+                        continue
+                except Exception as retry_error:
+                    last_error = retry_error
+            response = None
+            session = None
+            break
+    if response is None or session is None:
+        raise HTTPException(status_code=502, detail=f"audio playback upstream failed: {last_error}") from last_error
 
     ext = metadata.get("ext") or "m4a"
     media_type = "audio/webm" if ext == "webm" else "audio/mpeg" if ext == "mp3" else "audio/mp4"
@@ -254,13 +302,32 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=502, detail="stream URL was not resolved")
 
     upstream_headers = stream_fetch_headers()
-    session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
-    try:
-        response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
-        response.raise_for_status()
-    except Exception as error:
-        await session.close()
-        raise HTTPException(status_code=502, detail=f"audio download upstream failed: {error}") from error
+    response = None
+    session = None
+    last_error: Exception | None = None
+    for attempt in range(2):
+        session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
+        try:
+            response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
+            response.raise_for_status()
+            break
+        except Exception as error:
+            last_error = error
+            await session.close()
+            mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
+            if attempt == 0 and payload.url and payload.use_proxy:
+                try:
+                    metadata = await resolve_stream(db, payload.url, use_proxy=True, force_refresh=True)
+                    stream_url = metadata.get("stream_url")
+                    if stream_url:
+                        continue
+                except Exception as retry_error:
+                    last_error = retry_error
+            response = None
+            session = None
+            break
+    if response is None or session is None:
+        raise HTTPException(status_code=502, detail=f"audio download upstream failed: {last_error}") from last_error
 
     ext = metadata.get("ext") or "m4a"
     media_type = "audio/webm" if ext == "webm" else "audio/mpeg" if ext == "mp3" else "audio/mp4"

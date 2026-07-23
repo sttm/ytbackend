@@ -68,29 +68,6 @@ def track_usage(payload: TrackUsageRequest, db: Session = Depends(get_db)):
 
     metadata = payload.metadata if isinstance(payload.metadata, dict) else {}
     if metadata:
-        now = datetime.utcnow()
-        metadata_row = (
-            db.query(AudioMetadataCache)
-            .filter(AudioMetadataCache.provider == provider)
-            .filter(AudioMetadataCache.provider_media_id == media_id)
-            .first()
-        )
-        metadata_json = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
-        if metadata_row:
-            metadata_row.origin_url = payload.url.strip() or metadata_row.origin_url
-            metadata_row.metadata_json = metadata_json
-            metadata_row.updated_at = now
-        else:
-            db.add(
-                AudioMetadataCache(
-                    provider=provider,
-                    provider_media_id=media_id,
-                    origin_url=payload.url.strip(),
-                    metadata_json=metadata_json,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
         upsert_provider_metadata(db, provider, media_id, payload.url.strip(), metadata)
 
     event = TrackUsageEvent(
