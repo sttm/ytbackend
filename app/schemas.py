@@ -104,6 +104,9 @@ class TrackMetadataSubmitRequest(BaseModel):
     artist: str | None = None
     album: str | None = None
     genre: str | None = None
+    genreConfidence: float | None = None
+    genreModel: str | None = None
+    genreTags: list[dict] | None = None
     bpm: float | None = None
     key: str | None = None
     lufs: float | None = None
