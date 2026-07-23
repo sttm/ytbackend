@@ -34,12 +34,12 @@ def client_session_for_proxy(proxy_url: str | None) -> tuple[aiohttp.ClientSessi
     timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
     normalized_proxy = (proxy_url or "").strip()
     request_kwargs: dict[str, str] = {}
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
 
     if normalized_proxy.startswith(("socks4://", "socks5://", "socks5h://")):
-        connector = ProxyConnector.from_url(normalized_proxy)
+        connector = ProxyConnector.from_url(normalized_proxy, ssl=ssl_context)
         return aiohttp.ClientSession(timeout=timeout, connector=connector), request_kwargs
 
-    ssl_context = ssl.create_default_context(cafile=certifi.where())
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     if normalized_proxy.startswith(("http://", "https://")):
         request_kwargs["proxy"] = normalized_proxy
@@ -224,7 +224,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
                 db,
                 payload.url,
                 use_proxy=payload.use_proxy,
-                force_refresh=payload.force_refresh,
+                force_refresh=True,
             )
         except Exception as error:
             raise HTTPException(status_code=502, detail=str(error)) from error

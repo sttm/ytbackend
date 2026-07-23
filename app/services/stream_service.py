@@ -146,7 +146,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
 
     errors: list[str] = []
 
-    if settings.direct_first or not use_proxy:
+    if not use_proxy:
         try:
             result = extract_best_audio(youtube_url)
             _cache_result(db, youtube_url, result, "")
@@ -158,35 +158,46 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
             if not use_proxy:
                 raise
 
-    for proxy in best_proxies(db, settings.proxy_attempts):
+    if use_proxy:
+        for proxy in best_proxies(db, settings.proxy_attempts):
+            try:
+                started = time.perf_counter()
+                result = extract_best_audio(youtube_url, proxy.proxy_url)
+                resolve_ms = int((time.perf_counter() - started) * 1000)
+                apply_check_result(
+                    db,
+                    proxy,
+                    {
+                        "status": "verified",
+                        "latency_ms": resolve_ms,
+                        "download_ms": resolve_ms,
+                        "error": "",
+                    },
+                )
+                _cache_result(db, youtube_url, result, proxy.proxy_url)
+                result_response = _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
+                result_response["url"] = youtube_url
+                return _enrich_stream_response(db, result_response)
+            except Exception as error:
+                errors.append(f"{proxy.proxy_url}:{classify_error(error)}:{error}")
+                apply_check_result(
+                    db,
+                    proxy,
+                    {
+                        "status": "youtube_blocked" if classify_error(error) in {"youtube_bot", "youtube_rate_limit", "captcha"} else "dead",
+                        "latency_ms": proxy.latency_ms,
+                        "error": str(error),
+                    },
+                )
+
+    if settings.direct_first:
         try:
-            started = time.perf_counter()
-            result = extract_best_audio(youtube_url, proxy.proxy_url)
-            resolve_ms = int((time.perf_counter() - started) * 1000)
-            apply_check_result(
-                db,
-                proxy,
-                {
-                    "status": "verified",
-                    "latency_ms": resolve_ms,
-                    "download_ms": resolve_ms,
-                    "error": "",
-                },
-            )
-            _cache_result(db, youtube_url, result, proxy.proxy_url)
-            result_response = _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
+            result = extract_best_audio(youtube_url)
+            _cache_result(db, youtube_url, result, "")
+            result_response = _response_from_result(result, cached=False, proxy_used="")
             result_response["url"] = youtube_url
             return _enrich_stream_response(db, result_response)
         except Exception as error:
-            errors.append(f"{proxy.proxy_url}:{classify_error(error)}:{error}")
-            apply_check_result(
-                db,
-                proxy,
-                {
-                    "status": "youtube_blocked" if classify_error(error) in {"youtube_bot", "youtube_rate_limit", "captcha"} else "dead",
-                    "latency_ms": proxy.latency_ms,
-                    "error": str(error),
-                },
-            )
+            errors.append(f"direct:{classify_error(error)}:{error}")
 
     raise RuntimeError("No YouTube stream resolved. " + " | ".join(errors[-5:]))
