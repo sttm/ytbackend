@@ -3,7 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Proxy, StreamCache
+from app.models import AudioMetadataCache, Proxy, SearchQueryCache, StreamCache
 
 router = APIRouter()
 
@@ -16,6 +16,8 @@ def stats(db: Session = Depends(get_db)):
     blocked = db.query(Proxy).filter(Proxy.status.in_(["youtube_blocked", "captcha"])).count()
     dead = db.query(Proxy).filter(Proxy.is_active == False).count()  # noqa: E712
     cached = db.query(StreamCache).count()
+    metadata_cached = db.query(AudioMetadataCache).count()
+    search_queries_cached = db.query(SearchQueryCache).count()
     avg_latency = db.query(func.avg(Proxy.latency_ms)).filter(Proxy.is_verified == True).scalar()  # noqa: E712
     return {
         "proxies": {
@@ -29,5 +31,8 @@ def stats(db: Session = Depends(get_db)):
         "streams": {
             "cached": cached,
         },
+        "search_cache": {
+            "metadata": metadata_cached,
+            "queries": search_queries_cached,
+        },
     }
-

@@ -235,6 +235,10 @@ table {
   min-width: 980px;
 }
 
+.tracks-table {
+  min-width: 1120px;
+}
+
 th,
 td {
   text-align: left;
@@ -257,6 +261,45 @@ th {
 
 .verified {
   color: var(--green);
+}
+
+.track-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 260px;
+}
+
+.track-cell strong,
+.track-cell span {
+  display: block;
+}
+
+.track-cell strong {
+  max-width: 340px;
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.track-cell span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.track-thumb {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0b0d12;
+  object-fit: cover;
+}
+
+.track-thumb.placeholder {
+  display: inline-block;
 }
 
 .bad {

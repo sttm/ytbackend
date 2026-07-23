@@ -71,3 +71,77 @@ class StreamCache(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
+
+class AudioMetadataCache(Base):
+    __tablename__ = "audio_metadata_cache"
+    __table_args__ = (UniqueConstraint("provider", "provider_media_id", name="uq_audio_metadata_provider_media_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    provider_media_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    origin_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class SearchQueryCache(Base):
+    __tablename__ = "search_queries_cache"
+    __table_args__ = (UniqueConstraint("provider", "mode", "search_query", name="uq_search_query_provider_mode_query"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    mode: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    search_query: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
+    result_ids_json: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrackUsageEvent(Base):
+    __tablename__ = "track_usage_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    provider_media_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    origin_url: Mapped[str] = mapped_column(String(1024), default="")
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TrackFingerprintCache(Base):
+    __tablename__ = "track_fingerprint_cache"
+    __table_args__ = (UniqueConstraint("fingerprint_hash", name="uq_track_fingerprint_hash"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fingerprint_hash: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(512), default="")
+    artist: Mapped[str] = mapped_column(String(512), default="")
+    album: Mapped[str] = mapped_column(String(512), default="")
+    genre: Mapped[str] = mapped_column(String(255), default="")
+    bpm: Mapped[float | None] = mapped_column(Float, nullable=True)
+    musical_key: Mapped[str] = mapped_column(String(64), default="")
+    lufs: Mapped[float | None] = mapped_column(Float, nullable=True)
+    duration: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sample_rate: Mapped[int] = mapped_column(Integer, default=0)
+    bitrate: Mapped[int] = mapped_column(Integer, default=0)
+    artwork_url: Mapped[str] = mapped_column(String(1024), default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.75)
+    source_count: Mapped[int] = mapped_column(Integer, default=1)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
+class TrackProviderAlias(Base):
+    __tablename__ = "track_provider_aliases"
+    __table_args__ = (UniqueConstraint("provider", "provider_media_id", name="uq_track_provider_alias"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    provider_media_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    origin_url: Mapped[str] = mapped_column(String(1024), default="")
+    fingerprint_hash: Mapped[str] = mapped_column(String(128), default="", index=True)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

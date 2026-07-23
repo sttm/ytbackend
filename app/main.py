@@ -6,9 +6,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
+from app.api.metadata import router as metadata_router
 from app.api.proxies import router as proxies_router
 from app.api.stats import router as stats_router
 from app.api.streams import router as streams_router
+from app.api.tracks import router as tracks_router
 from app.config import get_settings
 from app.database import init_db
 
@@ -32,6 +34,8 @@ app.include_router(health_router)
 app.include_router(stats_router)
 app.include_router(proxies_router)
 app.include_router(streams_router)
+app.include_router(tracks_router)
+app.include_router(metadata_router)
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
@@ -48,4 +52,3 @@ def root():
 @app.get("/dashboard")
 def dashboard():
     return FileResponse(static_dir / "index.html")
-

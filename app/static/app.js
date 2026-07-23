@@ -3,6 +3,9 @@ const state = {
   page: 1,
   pages: 1,
   total: 0,
+  tracksPage: 1,
+  tracksPages: 1,
+  tracksTotal: 0,
   logSeq: 0,
 };
 
@@ -74,6 +77,8 @@ function renderStats(data) {
     ["Dead", data.proxies.dead],
     ["Avg latency", `${data.proxies.avg_latency_ms} ms`],
     ["Cached streams", data.streams.cached],
+    ["Cached metadata", data.search_cache?.metadata || 0],
+    ["Cached searches", data.search_cache?.queries || 0],
   ];
   $("stats").innerHTML = items
     .map(([label, value]) => `<div class="stat"><span>${label}</span><strong>${value}</strong></div>`)
@@ -102,6 +107,56 @@ function renderProxies(rows) {
     .join("");
 }
 
+function renderTracks(rows) {
+  $("tracks-table").innerHTML = rows
+    .map((row) => {
+      const thumbnail = row.thumbnail ? `<img class="track-thumb" src="${escapeHtml(row.thumbnail)}" alt="" loading="lazy" />` : `<span class="track-thumb placeholder"></span>`;
+      return `<tr>
+        <td>
+          <div class="track-cell">
+            ${thumbnail}
+            <div>
+              <strong>${escapeHtml(row.title || row.id)}</strong>
+              <span>${escapeHtml(row.artist || "")}</span>
+            </div>
+          </div>
+        </td>
+        <td><span class="badge">${escapeHtml(row.provider || "")}</span></td>
+        <td>${formatDuration(row.duration)}</td>
+        <td>${row.popularity || 0}</td>
+        <td>${row.query_count || 0}</td>
+        <td>${row.last_requested_at ? new Date(row.last_requested_at).toLocaleString() : "-"}</td>
+        <td><a href="${escapeHtml(row.url || "#")}" target="_blank" rel="noreferrer">open</a></td>
+        <td class="row-actions">
+          <button class="danger" data-track-delete-provider="${escapeHtml(row.provider || "")}" data-track-delete-id="${escapeHtml(row.id || "")}">Delete</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+}
+
+async function refreshTracks() {
+  const limit = 30;
+  const offset = (state.tracksPage - 1) * limit;
+  const params = new URLSearchParams({
+    limit: String(limit),
+    offset: String(offset),
+    sort: $("track-sort").value,
+  });
+  const provider = $("track-provider").value;
+  const q = $("track-search").value.trim();
+  if (provider) params.set("provider", provider);
+  if (q) params.set("q", q);
+  const data = await api(`/api/tracks?${params}`);
+  state.tracksPage = data.page;
+  state.tracksPages = data.pages;
+  state.tracksTotal = data.total;
+  renderTracks(data.tracks || []);
+  $("tracks-page-info").textContent = `Page ${state.tracksPage} / ${state.tracksPages} · ${state.tracksTotal} tracks`;
+  $("tracks-prev-page").disabled = state.tracksPage <= 1;
+  $("tracks-next-page").disabled = state.tracksPage >= state.tracksPages;
+}
+
 async function refresh() {
   logStep("Refresh stats and proxy table");
   const limit = Number($("page-size").value || 50);
@@ -118,6 +173,7 @@ async function refresh() {
   $("page-info").textContent = `Page ${state.page} / ${state.pages} · ${state.total} proxies`;
   $("prev-page").disabled = state.page <= 1;
   $("next-page").disabled = state.page >= state.pages;
+  await refreshTracks();
 }
 
 $("refresh").addEventListener("click", refresh);
@@ -291,7 +347,88 @@ $("status-filter").addEventListener("change", async () => {
   await refresh();
 });
 
+$("refresh-tracks").addEventListener("click", async () => {
+  state.tracksPage = 1;
+  await refreshTracks();
+});
+
+$("clear-tracks").addEventListener("click", async (event) => {
+  if (!confirm("Clear all tracks metadata, search query cache, and usage history?")) return;
+  await withButtonBusy(event.currentTarget, "Clearing...", async () => {
+    logStep("Clear tracks cache start");
+    const result = await api("/api/tracks", { method: "DELETE" });
+    setImportOutput("Tracks cache cleared.", result);
+    state.tracksPage = 1;
+    await refresh();
+  });
+});
+
+$("tracks-table").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-track-delete-id]");
+  if (!button) return;
+  const provider = button.dataset.trackDeleteProvider;
+  const id = button.dataset.trackDeleteId;
+  if (!provider || !id) return;
+  if (!confirm(`Delete ${provider}:${id} from Tracks cache?`)) return;
+  button.disabled = true;
+  button.textContent = "Deleting...";
+  try {
+    logStep("Delete track cache item", { provider, id });
+    const result = await api(`/api/tracks/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setImportOutput("Track cache item deleted.", result);
+    await refresh();
+  } catch (error) {
+    setImportOutput(`Error: ${error.message || error}`);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Delete";
+  }
+});
+
+$("track-provider").addEventListener("change", async () => {
+  state.tracksPage = 1;
+  await refreshTracks();
+});
+
+$("track-sort").addEventListener("change", async () => {
+  state.tracksPage = 1;
+  await refreshTracks();
+});
+
+$("track-search").addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  state.tracksPage = 1;
+  await refreshTracks();
+});
+
+$("tracks-prev-page").addEventListener("click", async () => {
+  state.tracksPage = Math.max(1, state.tracksPage - 1);
+  await refreshTracks();
+});
+
+$("tracks-next-page").addEventListener("click", async () => {
+  state.tracksPage = Math.min(state.tracksPages, state.tracksPage + 1);
+  await refreshTracks();
+});
+
 refresh().catch((error) => {
   console.error(error);
   setImportOutput(`Dashboard refresh failed: ${error.message || error}`);
 });
+
+function formatDuration(seconds) {
+  if (!seconds || !Number.isFinite(Number(seconds))) return "-";
+  const total = Math.round(Number(seconds));
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}

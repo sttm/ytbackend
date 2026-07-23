@@ -52,16 +52,66 @@ class YoutubeUrlRequest(BaseModel):
     url: str
     use_proxy: bool = True
     force_refresh: bool = False
+    stream_url: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    video_id: str | None = None
+    ext: str | None = None
+    mime_type: str | None = None
+    filesize: int | None = None
 
 
 class YoutubeSearchRequest(BaseModel):
     query: str
-    limit: int = 10
+    limit: int = 40
+    mode: str = "youtube-music"
+    source: str | None = None
+    filter: str | None = None
 
 
 class YoutubePlaylistRequest(BaseModel):
     url: str
     limit: int = 100
+
+
+class TrackUsageRequest(BaseModel):
+    provider: str
+    id: str
+    url: str = ""
+    action: str = "play"
+    metadata: dict = Field(default_factory=dict)
+
+
+class TrackMetadataLookupRequest(BaseModel):
+    fingerprintHash: str | None = None
+    provider: str | None = None
+    providerMediaId: str | None = None
+    id: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    duration: float | None = None
+
+
+class TrackMetadataSubmitRequest(BaseModel):
+    fingerprintHash: str | None = None
+    fingerprintVersion: str | None = None
+    chromaprintFingerprint: str | None = None
+    provider: str | None = None
+    providerMediaId: str | None = None
+    id: str | None = None
+    url: str | None = None
+    title: str | None = None
+    artist: str | None = None
+    album: str | None = None
+    genre: str | None = None
+    bpm: float | None = None
+    key: str | None = None
+    lufs: float | None = None
+    duration: float | None = None
+    sampleRate: int | None = None
+    bitrate: int | None = None
+    thumbnail: str | None = None
+    metadata: dict = Field(default_factory=dict)
 
 
 class ProxyCheckResult(BaseModel):

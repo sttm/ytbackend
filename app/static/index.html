@@ -81,6 +81,52 @@
       <section class="panel">
         <div class="panel-header">
           <div>
+            <h2>Tracks cache</h2>
+            <p>Cached YouTube and SoundCloud metadata ordered by search popularity.</p>
+          </div>
+          <div class="actions">
+            <input id="track-search" placeholder="Filter title or artist" />
+            <select id="track-provider">
+              <option value="">all providers</option>
+              <option value="youtube">youtube</option>
+              <option value="soundcloud">soundcloud</option>
+            </select>
+            <select id="track-sort">
+              <option value="popular" selected>popular</option>
+              <option value="recent">recent</option>
+              <option value="title">title</option>
+            </select>
+            <button id="refresh-tracks">Refresh tracks</button>
+            <button id="clear-tracks" class="danger">Clear tracks</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="tracks-table">
+            <thead>
+              <tr>
+                <th>Track</th>
+                <th>Provider</th>
+                <th>Duration</th>
+                <th>Popularity</th>
+                <th>Queries</th>
+                <th>Last requested</th>
+                <th>URL</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="tracks-table"></tbody>
+          </table>
+        </div>
+        <div class="pagination">
+          <button id="tracks-prev-page">Previous</button>
+          <span id="tracks-page-info">Page 1</span>
+          <button id="tracks-next-page">Next</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <h2>Best proxies</h2>
             <p>Verified proxies ordered by score and latency.</p>
           </div>

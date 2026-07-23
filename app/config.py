@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     proxy_attempts: int = 8
     stream_cache_hours: int = 6
     direct_first: bool = True
+    search_timeout_seconds: int = 15
+    stream_resolve_timeout_seconds: int = 25
 
 
 @lru_cache

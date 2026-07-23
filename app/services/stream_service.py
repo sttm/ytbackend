@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import asyncio
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,7 @@ from app.models import StreamCache
 from app.services.limits import stream_resolve_semaphore
 from app.services.proxy_store import apply_check_result, best_proxies
 from app.services.proxy_utils import classify_error
+from app.services.track_metadata import lookup_track_metadata
 from app.services.youtube import extract_best_audio, extract_video_id
 
 
@@ -52,9 +54,10 @@ def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str =
 
 
 def _response_from_cache(row: StreamCache) -> dict:
-    return {
+    return _enrich_stream_response(None, {
         "cached": True,
         "video_id": row.video_id,
+        "url": row.youtube_url,
         "title": row.title,
         "uploader": row.uploader,
         "duration": row.duration,
@@ -67,13 +70,14 @@ def _response_from_cache(row: StreamCache) -> dict:
         "sample_rate": row.sample_rate,
         "filesize": row.filesize,
         "proxy_used": row.proxy_used,
-    }
+    })
 
 
 def _response_from_result(result: dict, cached: bool, proxy_used: str = "") -> dict:
-    return {
+    return _enrich_stream_response(None, {
         "cached": cached,
         "video_id": result.get("video_id"),
+        "url": result.get("url"),
         "title": result.get("title"),
         "uploader": result.get("uploader"),
         "duration": result.get("duration"),
@@ -86,12 +90,51 @@ def _response_from_result(result: dict, cached: bool, proxy_used: str = "") -> d
         "sample_rate": result.get("sample_rate"),
         "filesize": result.get("filesize"),
         "proxy_used": proxy_used,
-    }
+    })
+
+
+def _enrich_stream_response(db: Session | None, response: dict) -> dict:
+    if db is None:
+        return response
+    provider = "soundcloud" if "soundcloud.com" in str(response.get("url") or response.get("youtube_url") or "").lower() else "youtube"
+    media_id = str(response.get("video_id") or "").strip()
+    if not media_id:
+        return response
+    lookup = lookup_track_metadata(db, {
+        "provider": provider,
+        "providerMediaId": media_id,
+        "title": response.get("title"),
+        "artist": response.get("uploader"),
+        "duration": response.get("duration"),
+    })
+    metadata = lookup.get("metadata") if lookup.get("matched") else None
+    if not isinstance(metadata, dict):
+        return response
+    for source_key, target_key in (
+        ("genre", "genre"),
+        ("bpm", "bpm"),
+        ("key", "key"),
+        ("lufs", "lufs"),
+        ("sampleRate", "sample_rate"),
+        ("bitrate", "bitrate"),
+        ("fingerprintHash", "fingerprint_hash"),
+        ("fingerprintVersion", "fingerprint_version"),
+        ("chromaprintFingerprint", "chromaprint_fingerprint"),
+        ("metadataSource", "metadata_source"),
+        ("metadataConfidence", "metadata_confidence"),
+    ):
+        value = metadata.get(source_key)
+        if value not in (None, ""):
+            response[target_key] = value
+    return response
 
 
 async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
     async with stream_resolve_semaphore:
-        return _resolve_stream_locked(db, youtube_url, use_proxy=use_proxy, force_refresh=force_refresh)
+        return await asyncio.wait_for(
+            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh),
+            timeout=settings.stream_resolve_timeout_seconds,
+        )
 
 
 def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
@@ -99,7 +142,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
     if not force_refresh:
         cached = _cached_stream(db, video_id)
         if cached:
-            return _response_from_cache(cached)
+            return _enrich_stream_response(db, _response_from_cache(cached))
 
     errors: list[str] = []
 
@@ -107,7 +150,9 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
         try:
             result = extract_best_audio(youtube_url)
             _cache_result(db, youtube_url, result, "")
-            return _response_from_result(result, cached=False, proxy_used="")
+            result_response = _response_from_result(result, cached=False, proxy_used="")
+            result_response["url"] = youtube_url
+            return _enrich_stream_response(db, result_response)
         except Exception as error:
             errors.append(f"direct:{classify_error(error)}:{error}")
             if not use_proxy:
@@ -129,7 +174,9 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
                 },
             )
             _cache_result(db, youtube_url, result, proxy.proxy_url)
-            return _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
+            result_response = _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
+            result_response["url"] = youtube_url
+            return _enrich_stream_response(db, result_response)
         except Exception as error:
             errors.append(f"{proxy.proxy_url}:{classify_error(error)}:{error}")
             apply_check_result(

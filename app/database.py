@@ -6,16 +6,21 @@ from app.config import get_settings
 
 
 settings = get_settings()
+database_url = settings.database_url
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
 
-if settings.database_url.startswith("sqlite:///"):
-    db_path = settings.database_url.replace("sqlite:///", "", 1)
-    if db_path.startswith("./"):
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+if database_url.startswith("sqlite:///"):
+    db_path = database_url.replace("sqlite:///", "", 1)
+    if db_path and db_path != ":memory:":
+        Path(db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
     connect_args = {"check_same_thread": False}
 else:
     connect_args = {}
 
-engine = create_engine(settings.database_url, connect_args=connect_args)
+engine = create_engine(database_url, connect_args=connect_args, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
