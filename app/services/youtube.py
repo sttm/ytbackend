@@ -4,12 +4,15 @@ import re
 from urllib.parse import parse_qs, urlparse
 import yt_dlp
 
+from app.config import get_settings
+
 try:
     from ytmusicapi import YTMusic
 except Exception:  # pragma: no cover - optional dependency guard for degraded installs
     YTMusic = None
 
 
+settings = get_settings()
 MAX_SEARCH_TRACKS = 30
 MAX_SEARCH_CONTAINERS = 10
 MAX_SEARCH_RESULTS = MAX_SEARCH_TRACKS + MAX_SEARCH_CONTAINERS
@@ -56,10 +59,10 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
-        "socket_timeout": 18,
-        "retries": 1,
-        "fragment_retries": 1,
-        "extractor_retries": 1,
+        "socket_timeout": settings.ytdlp_socket_timeout_seconds,
+        "retries": settings.ytdlp_retries,
+        "fragment_retries": settings.ytdlp_retries,
+        "extractor_retries": settings.ytdlp_retries,
         "skip_unavailable_fragments": True,
         "noplaylist": True,
         "logger": QuietYtDlpLogger(),

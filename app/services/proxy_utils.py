@@ -37,9 +37,8 @@ def classify_error(error: object) -> str:
         return "youtube_bot"
     if "timed out" in text or "timeout" in text:
         return "timeout"
-    if "unable to connect" in text or "proxyerror" in text or "connection reset" in text:
+    if "unable to connect" in text or "proxyerror" in text or "connection reset" in text or "host unreachable" in text:
         return "proxy_dead"
-    if "ssl" in text or "eoferror" in text:
+    if "ssl" in text or "eoferror" in text or "unexpected_eof" in text or "bytes missing" in text:
         return "proxy_dead"
     return "unknown"
-

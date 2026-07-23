@@ -20,12 +20,14 @@ class Settings(BaseSettings):
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8787"
     proxy_check_concurrency: int = 30
-    stream_resolve_concurrency: int = 1
-    proxy_attempts: int = 8
+    stream_resolve_concurrency: int = 4
+    proxy_attempts: int = 3
     stream_cache_hours: int = 6
     direct_first: bool = True
     search_timeout_seconds: int = 15
-    stream_resolve_timeout_seconds: int = 25
+    stream_resolve_timeout_seconds: int = 35
+    ytdlp_socket_timeout_seconds: int = 8
+    ytdlp_retries: int = 0
 
 
 @lru_cache

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from app.services.youtube import extract_best_audio, extract_video_id
 
 
 settings = get_settings()
+logger = logging.getLogger("producerscenter.stream")
 
 
 def _cached_stream(db: Session, video_id: str | None) -> StreamCache | None:
@@ -139,29 +141,48 @@ async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, 
 
 def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
     video_id = extract_video_id(youtube_url)
+    started_total = time.perf_counter()
+    logger.info(
+        "stream resolve start video_id=%s use_proxy=%s force_refresh=%s proxy_attempts=%s",
+        video_id or "-",
+        use_proxy,
+        force_refresh,
+        settings.proxy_attempts,
+    )
     if not force_refresh:
         cached = _cached_stream(db, video_id)
         if cached:
+            logger.info("stream resolve cache hit video_id=%s proxy_used=%s", video_id or "-", bool(cached.proxy_used))
             return _enrich_stream_response(db, _response_from_cache(cached))
 
     errors: list[str] = []
 
     if not use_proxy:
         try:
+            logger.info("stream resolve direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url)
             _cache_result(db, youtube_url, result, "")
             result_response = _response_from_result(result, cached=False, proxy_used="")
             result_response["url"] = youtube_url
+            logger.info(
+                "stream resolve direct success video_id=%s elapsed_ms=%s",
+                video_id or "-",
+                int((time.perf_counter() - started_total) * 1000),
+            )
             return _enrich_stream_response(db, result_response)
         except Exception as error:
             errors.append(f"direct:{classify_error(error)}:{error}")
+            logger.warning("stream resolve direct failed video_id=%s kind=%s error=%s", video_id or "-", classify_error(error), error)
             if not use_proxy:
                 raise
 
     if use_proxy:
-        for proxy in best_proxies(db, settings.proxy_attempts):
+        proxies = best_proxies(db, settings.proxy_attempts)
+        logger.info("stream resolve proxy candidates video_id=%s count=%s", video_id or "-", len(proxies))
+        for proxy in proxies:
             try:
                 started = time.perf_counter()
+                logger.info("stream resolve proxy attempt video_id=%s proxy=%s", video_id or "-", proxy.proxy_url)
                 result = extract_best_audio(youtube_url, proxy.proxy_url)
                 resolve_ms = int((time.perf_counter() - started) * 1000)
                 apply_check_result(
@@ -177,9 +198,22 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
                 _cache_result(db, youtube_url, result, proxy.proxy_url)
                 result_response = _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
                 result_response["url"] = youtube_url
+                logger.info(
+                    "stream resolve proxy success video_id=%s proxy=%s elapsed_ms=%s",
+                    video_id or "-",
+                    proxy.proxy_url,
+                    resolve_ms,
+                )
                 return _enrich_stream_response(db, result_response)
             except Exception as error:
                 errors.append(f"{proxy.proxy_url}:{classify_error(error)}:{error}")
+                logger.warning(
+                    "stream resolve proxy failed video_id=%s proxy=%s kind=%s error=%s",
+                    video_id or "-",
+                    proxy.proxy_url,
+                    classify_error(error),
+                    error,
+                )
                 apply_check_result(
                     db,
                     proxy,
@@ -192,12 +226,20 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
 
     if settings.direct_first:
         try:
+            logger.info("stream resolve fallback direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url)
             _cache_result(db, youtube_url, result, "")
             result_response = _response_from_result(result, cached=False, proxy_used="")
             result_response["url"] = youtube_url
+            logger.info(
+                "stream resolve fallback direct success video_id=%s elapsed_ms=%s",
+                video_id or "-",
+                int((time.perf_counter() - started_total) * 1000),
+            )
             return _enrich_stream_response(db, result_response)
         except Exception as error:
             errors.append(f"direct:{classify_error(error)}:{error}")
+            logger.warning("stream resolve fallback direct failed video_id=%s kind=%s error=%s", video_id or "-", classify_error(error), error)
 
+    logger.error("stream resolve failed video_id=%s elapsed_ms=%s errors=%s", video_id or "-", int((time.perf_counter() - started_total) * 1000), " | ".join(errors[-5:]))
     raise RuntimeError("No YouTube stream resolved. " + " | ".join(errors[-5:]))

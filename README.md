@@ -48,7 +48,21 @@ Environment:
 ```env
 DATABASE_URL=<Render internal PostgreSQL URL>
 PRODUCERSCENTER_BACKEND_CORS_ORIGINS=http://localhost:8787,https://producerscenter.app
+PRODUCERSCENTER_BACKEND_DIRECT_FIRST=false
+PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_CONCURRENCY=4
+PRODUCERSCENTER_BACKEND_PROXY_ATTEMPTS=3
+PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_TIMEOUT_SECONDS=35
+PRODUCERSCENTER_BACKEND_YTDLP_SOCKET_TIMEOUT_SECONDS=8
+PRODUCERSCENTER_BACKEND_YTDLP_RETRIES=0
 ```
+
+Why Render can behave differently from a local backend:
+
+- YouTube signs stream URLs for the resolver/proxy network path. A URL resolved from a Render egress IP is not equivalent to one resolved from your Mac.
+- Render datacenter IPs are more likely to hit YouTube bot/sign-in checks than residential/local traffic.
+- Public proxies that work from your Mac can be blocked, slow, or TLS-flaky from Render's network.
+- `yt-dlp` extraction is blocking work. Keep `PROXY_ATTEMPTS * YTDLP_SOCKET_TIMEOUT_SECONDS` below `STREAM_RESOLVE_TIMEOUT_SECONDS`.
+- For production playback, prefer proxy-first (`DIRECT_FIRST=false`) and keep attempts small. Bad proxies should fail fast and be rechecked by the dashboard.
 
 Database check:
 
