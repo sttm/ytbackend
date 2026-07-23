@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.config import get_settings
+from app.database import check_db
 
 router = APIRouter()
 
@@ -14,3 +15,7 @@ def health():
         "version": settings.version,
     }
 
+
+@router.get("/api/health/db")
+def health_db():
+    return check_db()

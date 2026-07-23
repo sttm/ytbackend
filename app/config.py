@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,10 @@ class Settings(BaseSettings):
     name: str = "ProducersCenter Backend"
     version: str = "0.1.0"
     debug: bool = True
-    database_url: str = "sqlite:///./storage/backend.db"
+    database_url: str = Field(
+        "sqlite:///./storage/backend.db",
+        validation_alias=AliasChoices("PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
+    )
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8787"
     proxy_check_concurrency: int = 30

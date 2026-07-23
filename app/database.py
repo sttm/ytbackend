@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -6,7 +7,11 @@ from app.config import get_settings
 
 
 settings = get_settings()
-database_url = settings.database_url
+database_url = (
+    os.environ.get("PRODUCERSCENTER_BACKEND_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or settings.database_url
+)
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
 elif database_url.startswith("postgresql://"):
@@ -41,6 +46,19 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     ensure_schema()
+
+
+def check_db() -> dict:
+    with engine.connect() as connection:
+        dialect = connection.dialect.name
+        result = connection.execute(text("SELECT 1")).scalar_one()
+        tables = inspect(connection).get_table_names()
+    return {
+        "ok": result == 1,
+        "dialect": dialect,
+        "tables": len(tables),
+        "using_postgres": dialect == "postgresql",
+    }
 
 
 def ensure_schema() -> None:

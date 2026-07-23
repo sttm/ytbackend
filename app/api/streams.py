@@ -58,6 +58,8 @@ async def stream(
             "status": "success",
             **await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh),
         }
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="Stream resolve timed out. Try again or refresh the proxy pool.") from error
     except Exception as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
@@ -74,6 +76,8 @@ async def resolve_stream_post(payload: YoutubeUrlRequest, db: Session = Depends(
                 force_refresh=payload.force_refresh,
             ),
         }
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="Stream resolve timed out. Try again or refresh the proxy pool.") from error
     except Exception as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
@@ -161,6 +165,8 @@ async def playback(
 ):
     try:
         metadata = await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh)
+    except TimeoutError as error:
+        raise HTTPException(status_code=504, detail="Playback stream resolve timed out. Try again or refresh the proxy pool.") from error
     except Exception as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
@@ -226,6 +232,8 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
                 use_proxy=payload.use_proxy,
                 force_refresh=True,
             )
+        except TimeoutError as error:
+            raise HTTPException(status_code=504, detail="Download stream resolve timed out. Try again or refresh the proxy pool.") from error
         except Exception as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
     elif payload.stream_url:

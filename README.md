@@ -34,6 +34,29 @@ cp .env.example .env
 ```
 
 The app accepts both `postgres://...` and `postgresql://...` URLs and normalizes them to the `psycopg` SQLAlchemy driver. On first boot it creates the current tables automatically.
+It reads both `PRODUCERSCENTER_BACKEND_DATABASE_URL` and Render's standard `DATABASE_URL`.
+
+Render PostgreSQL:
+
+```txt
+Build Command: pip install -r requirements.txt
+Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+```
+
+Environment:
+
+```env
+DATABASE_URL=<Render internal PostgreSQL URL>
+PRODUCERSCENTER_BACKEND_CORS_ORIGINS=http://localhost:8787,https://producerscenter.app
+```
+
+Database check:
+
+```bash
+python -m app.manage init-db
+python -m app.manage check-db
+curl https://<backend-host>/api/health/db
+```
 
 SQLite remains available only as a local fallback:
 
