@@ -16,6 +16,14 @@ settings = get_settings()
 MAX_SEARCH_TRACKS = 30
 MAX_SEARCH_CONTAINERS = 10
 MAX_SEARCH_RESULTS = MAX_SEARCH_TRACKS + MAX_SEARCH_CONTAINERS
+AUDIO_FORMAT_SELECTOR = (
+    "bestaudio[acodec^=opus][ext=webm]/"
+    "bestaudio[acodec^=mp4a][ext=m4a]/"
+    "bestaudio[acodec^=aac][ext=m4a]/"
+    "bestaudio[ext=m4a]/"
+    "bestaudio[ext=webm]/"
+    "bestaudio"
+)
 
 
 class QuietYtDlpLogger:
@@ -53,9 +61,69 @@ def small_thumbnail(info: dict) -> str | None:
     return min(thumbnails, key=lambda thumb: thumb.get("width") or 99999).get("url")
 
 
+def audio_codec_family(fmt: dict) -> str:
+    codec = str(fmt.get("acodec") or "").lower()
+    if "opus" in codec:
+        return "opus"
+    if "mp4a" in codec or "aac" in codec:
+        return "aac"
+    if "mp3" in codec:
+        return "mp3"
+    return codec
+
+
+def normalized_audio_ext(fmt: dict) -> str:
+    family = audio_codec_family(fmt)
+    ext = str(fmt.get("ext") or "").lower()
+    if family == "opus" or ext == "webm":
+        return "webm"
+    if family == "aac" or ext in {"m4a", "mp4"}:
+        return "m4a"
+    if family == "mp3" or ext == "mp3":
+        return "mp3"
+    return ext or "m4a"
+
+
+def is_audio_format(fmt: dict) -> bool:
+    codec = str(fmt.get("acodec") or "").lower()
+    vcodec = str(fmt.get("vcodec") or "none").lower()
+    return bool(fmt.get("url")) and bool(codec) and codec != "none" and vcodec == "none"
+
+
+def is_preferred_audio_format(fmt: dict) -> bool:
+    if not is_audio_format(fmt):
+        return False
+    family = audio_codec_family(fmt)
+    ext = str(fmt.get("ext") or "").lower()
+    if family == "opus":
+        return ext == "webm"
+    if family == "aac":
+        return ext in {"m4a", "mp4"}
+    return ext in {"webm", "m4a", "mp3"}
+
+
+def audio_format_score(fmt: dict) -> tuple[int, float, int, int]:
+    family = audio_codec_family(fmt)
+    ext = str(fmt.get("ext") or "").lower()
+    if family == "opus" and ext == "webm":
+        family_score = 300
+    elif family == "aac" and ext in {"m4a", "mp4"}:
+        family_score = 250
+    elif ext in {"webm", "m4a"}:
+        family_score = 200
+    else:
+        family_score = 100
+    return (
+        family_score,
+        float(fmt.get("abr") or fmt.get("tbr") or 0),
+        int(fmt.get("asr") or 0),
+        int(fmt.get("filesize") or fmt.get("filesize_approx") or 0),
+    )
+
+
 def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
     opts = {
-        "format": "bestaudio/best",
+        "format": AUDIO_FORMAT_SELECTOR,
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
@@ -73,22 +141,13 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(youtube_url, download=False)
 
-    formats = [
-        fmt
-        for fmt in info.get("formats", [])
-        if fmt.get("url") and fmt.get("acodec") and fmt.get("acodec") != "none"
-    ]
+    formats = [fmt for fmt in info.get("formats", []) if is_preferred_audio_format(fmt)]
+    if not formats:
+        formats = [fmt for fmt in info.get("formats", []) if is_audio_format(fmt)]
     if not formats:
         raise RuntimeError("No audio formats found")
 
-    best = max(
-        formats,
-        key=lambda fmt: (
-            fmt.get("abr") or 0,
-            fmt.get("asr") or 0,
-            fmt.get("filesize") or fmt.get("filesize_approx") or 0,
-        ),
-    )
+    best = max(formats, key=audio_format_score)
 
     return {
         "video_id": info.get("id"),
@@ -99,7 +158,7 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
         "stream_url": best["url"],
         "format_id": best.get("format_id"),
         "audio_codec": best.get("acodec"),
-        "ext": best.get("ext"),
+        "ext": normalized_audio_ext(best),
         "bitrate": best.get("abr") or 0,
         "sample_rate": best.get("asr") or 0,
         "filesize": best.get("filesize") or best.get("filesize_approx") or 0,
