@@ -107,6 +107,7 @@ class TrackMetadataSubmitRequest(BaseModel):
     genreConfidence: float | None = None
     genreModel: str | None = None
     genreTags: list[dict] | None = None
+    year: int | None = None
     bpm: float | None = None
     key: str | None = None
     lufs: float | None = None

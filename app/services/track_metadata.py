@@ -18,6 +18,10 @@ KNOWN_METADATA_KEYS = {
     "genreConfidence",
     "genreModel",
     "genreTags",
+    "year",
+    "date",
+    "releaseYear",
+    "release_year",
     "bpm",
     "key",
     "lufs",
@@ -57,6 +61,7 @@ def metadata_from_row(row: TrackFingerprintCache, source: str, confidence: float
         "genreConfidence": metadata.get("genreConfidence"),
         "genreModel": metadata.get("genreModel"),
         "genreTags": metadata.get("genreTags"),
+        "year": metadata.get("year") or metadata.get("releaseYear") or metadata.get("release_year") or metadata.get("date"),
         "bpm": row.bpm if row.bpm is not None else metadata.get("bpm"),
         "key": row.musical_key or metadata.get("key"),
         "lufs": row.lufs if row.lufs is not None else metadata.get("lufs"),
@@ -264,7 +269,7 @@ def enrich_items_with_cached_metadata(db: Session, items: list[dict[str, Any]]) 
 
 def merge_track_item(item: dict[str, Any], metadata: dict[str, Any]) -> dict[str, Any]:
     next_item = {**item}
-    for key in ("genre", "genreConfidence", "genreModel", "genreTags", "bpm", "key", "lufs", "sampleRate", "bitrate", "fingerprintHash", "fingerprintVersion", "metadataSource", "metadataConfidence"):
+    for key in ("album", "genre", "genreConfidence", "genreModel", "genreTags", "year", "bpm", "key", "lufs", "sampleRate", "bitrate", "fingerprintHash", "fingerprintVersion", "metadataSource", "metadataConfidence"):
         value = metadata.get(key)
         if value not in (None, ""):
             next_item[key] = value
