@@ -102,12 +102,14 @@ class TrackMetadataSubmitRequest(BaseModel):
     url: str | None = None
     title: str | None = None
     artist: str | None = None
+    artists: list[str] | None = None
     album: str | None = None
     genre: str | None = None
     genreConfidence: float | None = None
     genreModel: str | None = None
     genreTags: list[dict] | None = None
     year: int | None = None
+    releaseYear: int | None = None
     bpm: float | None = None
     key: str | None = None
     lufs: float | None = None

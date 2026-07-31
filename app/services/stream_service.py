@@ -82,6 +82,11 @@ def _response_from_result(result: dict, cached: bool, proxy_used: str = "") -> d
         "url": result.get("url"),
         "title": result.get("title"),
         "uploader": result.get("uploader"),
+        "artist": result.get("artist"),
+        "artists": result.get("artists"),
+        "album": result.get("album"),
+        "track": result.get("track"),
+        "release_year": result.get("release_year"),
         "duration": result.get("duration"),
         "thumbnail": result.get("thumbnail"),
         "stream_url": result["stream_url"],
@@ -113,6 +118,12 @@ def _enrich_stream_response(db: Session | None, response: dict) -> dict:
     if not isinstance(metadata, dict):
         return response
     for source_key, target_key in (
+        ("artist", "artist"),
+        ("artists", "artists"),
+        ("album", "album"),
+        ("year", "year"),
+        ("releaseYear", "release_year"),
+        ("release_year", "release_year"),
         ("genre", "genre"),
         ("bpm", "bpm"),
         ("key", "key"),
