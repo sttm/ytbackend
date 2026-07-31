@@ -61,6 +61,20 @@ def small_thumbnail(info: dict) -> str | None:
     return min(thumbnails, key=lambda thumb: thumb.get("width") or 99999).get("url")
 
 
+def extract_year(*values: object) -> int | None:
+    for value in values:
+        if value is None or value == "":
+            continue
+        if isinstance(value, (int, float)):
+            number = int(value)
+            return number // 10000 if number > 10_000_000 else number
+        text = str(value).strip()
+        match = re.match(r"^(\d{4})(?:[-/]?\d{2}[-/]?\d{2})?", text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
 def audio_codec_family(fmt: dict) -> str:
     codec = str(fmt.get("acodec") or "").lower()
     if "opus" in codec:
@@ -157,7 +171,15 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
         "artists": info.get("artists") or info.get("creators"),
         "album": info.get("album"),
         "track": info.get("track"),
-        "release_year": info.get("release_year") or info.get("releaseYear") or info.get("year"),
+        "release_year": extract_year(
+            info.get("release_year"),
+            info.get("releaseYear"),
+            info.get("year"),
+            info.get("release_date"),
+            info.get("upload_date"),
+            info.get("date"),
+            info.get("timestamp"),
+        ),
         "duration": info.get("duration"),
         "thumbnail": small_thumbnail(info),
         "stream_url": best["url"],

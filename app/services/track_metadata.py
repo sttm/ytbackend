@@ -51,8 +51,29 @@ def clean_text(value: str | None) -> str:
     return re.sub(r"\s+", " ", (value or "").strip()).lower()
 
 
+def extract_year(*values: object) -> int | None:
+    for value in values:
+        if value is None or value == "":
+            continue
+        if isinstance(value, (int, float)):
+            number = int(value)
+            return number // 10000 if number > 10_000_000 else number
+        match = re.match(r"^(\d{4})(?:[-/]?\d{2}[-/]?\d{2})?", str(value).strip())
+        if match:
+            return int(match.group(1))
+    return None
+
+
 def metadata_from_row(row: TrackFingerprintCache, source: str, confidence: float | None = None) -> dict[str, Any]:
     metadata = safe_json(row.metadata_json)
+    release_year = extract_year(
+        metadata.get("releaseYear"),
+        metadata.get("release_year"),
+        metadata.get("year"),
+        metadata.get("release_date"),
+        metadata.get("upload_date"),
+        metadata.get("date"),
+    )
     return {
         **metadata,
         "title": row.title or metadata.get("title"),
@@ -63,8 +84,8 @@ def metadata_from_row(row: TrackFingerprintCache, source: str, confidence: float
         "genreConfidence": metadata.get("genreConfidence"),
         "genreModel": metadata.get("genreModel"),
         "genreTags": metadata.get("genreTags"),
-        "year": metadata.get("year") or metadata.get("releaseYear") or metadata.get("release_year") or metadata.get("date"),
-        "releaseYear": metadata.get("releaseYear") or metadata.get("release_year") or metadata.get("year") or metadata.get("date"),
+        "year": release_year,
+        "releaseYear": release_year,
         "bpm": row.bpm if row.bpm is not None else metadata.get("bpm"),
         "key": row.musical_key or metadata.get("key"),
         "lufs": row.lufs if row.lufs is not None else metadata.get("lufs"),
