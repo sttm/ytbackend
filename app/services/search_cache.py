@@ -82,6 +82,7 @@ def store_search_items(db: Session, query: str, mode: str, items: list[dict]) ->
         provider_media_id = str(item.get("id") or "").strip()
         if not provider_media_id or provider_media_id in seen_ids:
             continue
+        item = primary_search_metadata(item)
         seen_ids.add(provider_media_id)
         result_ids.append(provider_media_id)
         metadata_row = (
@@ -180,3 +181,19 @@ def merge_metadata_json(existing_json: str, patch: dict) -> str:
         existing = {}
     merged = {**existing, **{key: value for key, value in patch.items() if value not in (None, "")}}
     return json.dumps(merged, ensure_ascii=False, separators=(",", ":"))
+
+
+def primary_search_metadata(item: dict) -> dict:
+    analysis_keys = {
+        "genre",
+        "genreConfidence",
+        "genreModel",
+        "genreTags",
+        "bpm",
+        "key",
+        "lufs",
+        "fingerprintHash",
+        "fingerprintVersion",
+        "chromaprintFingerprint",
+    }
+    return {key: value for key, value in item.items() if key not in analysis_keys}

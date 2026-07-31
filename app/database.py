@@ -70,8 +70,19 @@ def ensure_schema() -> None:
     required_columns = {
         "download_ms": "INTEGER DEFAULT 0",
     }
+    stream_columns = {column["name"] for column in inspector.get_columns("stream_cache")} if "stream_cache" in inspector.get_table_names() else set()
+    stream_required_columns = {
+        "artist": "VARCHAR(512) DEFAULT ''",
+        "artists_json": "TEXT DEFAULT '[]'",
+        "album": "VARCHAR(512) DEFAULT ''",
+        "track": "VARCHAR(512) DEFAULT ''",
+        "release_year": "INTEGER DEFAULT 0",
+    }
 
     with engine.begin() as connection:
         for column_name, ddl in required_columns.items():
             if column_name not in proxy_columns:
                 connection.execute(text(f"ALTER TABLE proxies ADD COLUMN {column_name} {ddl}"))
+        for column_name, ddl in stream_required_columns.items():
+            if column_name not in stream_columns:
+                connection.execute(text(f"ALTER TABLE stream_cache ADD COLUMN {column_name} {ddl}"))

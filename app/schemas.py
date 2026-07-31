@@ -36,6 +36,12 @@ class StreamResponse(BaseModel):
     video_id: str | None
     title: str | None
     uploader: str | None
+    artist: str | None = None
+    artists: list[str] | None = None
+    album: str | None = None
+    track: str | None = None
+    release_year: int | None = None
+    year: int | None = None
     duration: int | None
     thumbnail: str | None
     stream_url: str

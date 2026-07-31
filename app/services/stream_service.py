@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import asyncio
 import logging
+import json
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
@@ -19,12 +20,16 @@ settings = get_settings()
 logger = logging.getLogger("producerscenter.stream")
 
 
-def _cached_stream(db: Session, video_id: str | None) -> StreamCache | None:
-    if not video_id:
+def _stream_cache_key(url: str) -> str:
+    return extract_video_id(url) or url.strip()
+
+
+def _cached_stream(db: Session, cache_key: str | None) -> StreamCache | None:
+    if not cache_key:
         return None
     return (
         db.query(StreamCache)
-        .filter(StreamCache.video_id == video_id)
+        .filter(StreamCache.video_id == cache_key)
         .filter(StreamCache.expires_at > datetime.utcnow())
         .order_by(StreamCache.created_at.desc())
         .first()
@@ -33,10 +38,15 @@ def _cached_stream(db: Session, video_id: str | None) -> StreamCache | None:
 
 def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str = "") -> StreamCache:
     row = StreamCache(
-        video_id=result.get("video_id") or extract_video_id(youtube_url) or "",
+        video_id=result.get("video_id") or _stream_cache_key(youtube_url),
         youtube_url=youtube_url,
         title=result.get("title") or "",
         uploader=result.get("uploader") or "",
+        artist=result.get("artist") or result.get("uploader") or "",
+        artists_json=json.dumps(result.get("artists") or [], ensure_ascii=False, separators=(",", ":")),
+        album=result.get("album") or "",
+        track=result.get("track") or "",
+        release_year=result.get("release_year") or 0,
         duration=result.get("duration") or 0,
         thumbnail=result.get("thumbnail") or "",
         stream_url=result["stream_url"],
@@ -56,12 +66,24 @@ def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str =
 
 
 def _response_from_cache(row: StreamCache) -> dict:
+    artists = []
+    try:
+        parsed_artists = json.loads(row.artists_json or "[]")
+        if isinstance(parsed_artists, list):
+            artists = parsed_artists
+    except json.JSONDecodeError:
+        artists = []
     return _enrich_stream_response(None, {
         "cached": True,
         "video_id": row.video_id,
         "url": row.youtube_url,
         "title": row.title,
         "uploader": row.uploader,
+        "artist": row.artist or row.uploader,
+        "artists": artists,
+        "album": row.album or None,
+        "track": row.track or None,
+        "release_year": row.release_year or None,
         "duration": row.duration,
         "thumbnail": row.thumbnail,
         "stream_url": row.stream_url,
@@ -151,7 +173,7 @@ async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, 
 
 
 def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
-    video_id = extract_video_id(youtube_url)
+    video_id = _stream_cache_key(youtube_url)
     started_total = time.perf_counter()
     logger.info(
         "stream resolve start video_id=%s use_proxy=%s force_refresh=%s proxy_attempts=%s",

@@ -228,12 +228,18 @@ def search_media(query: str, limit: int = 10, mode: str = "youtube-music") -> li
     items = [
         {
             "id": entry.get("id"),
-            "title": entry.get("title") or entry.get("id") or "",
-            "artist": entry.get("uploader") or entry.get("channel") or "",
+            "title": entry.get("track") or entry.get("title") or entry.get("id") or "",
+            "artist": entry.get("artist") or entry.get("creator") or entry.get("uploader") or entry.get("channel") or "",
+            "artists": entry.get("artists") or entry.get("creators"),
+            "album": entry.get("album"),
+            "track": entry.get("track"),
+            "year": extract_year(entry.get("release_year"), entry.get("releaseYear"), entry.get("year"), entry.get("release_date"), entry.get("upload_date"), entry.get("date"), entry.get("timestamp")),
+            "releaseYear": extract_year(entry.get("release_year"), entry.get("releaseYear"), entry.get("year"), entry.get("release_date"), entry.get("upload_date"), entry.get("date"), entry.get("timestamp")),
             "duration": entry.get("duration"),
             "thumbnail": entry.get("thumbnail") or small_thumbnail(entry),
             "url": search_entry_url(entry, provider),
             "provider": provider,
+            "source": normalized_mode,
         }
         for entry in entries
         if entry.get("id")
@@ -274,11 +280,19 @@ def search_youtube_music(query: str, limit: int = 10) -> list[dict]:
             if isinstance(artist_entry, dict) and artist_entry.get("name")
         )
         thumbnail = best_ytmusic_thumbnail(entry.get("thumbnails") or [])
+        album = entry.get("album") or {}
+        album_name = album.get("name") if isinstance(album, dict) else album
+        release_year = extract_year(entry.get("year"), entry.get("releaseYear"), entry.get("release_year"))
         items.append(
             {
                 "id": video_id,
                 "title": entry.get("title") or video_id,
                 "artist": artist or entry.get("artist") or "YouTube Music",
+                "artists": [artist_entry.get("name") for artist_entry in artists if isinstance(artist_entry, dict) and artist_entry.get("name")] or None,
+                "album": album_name,
+                "track": entry.get("title") or video_id,
+                "year": release_year,
+                "releaseYear": release_year,
                 "duration": entry.get("duration_seconds") or parse_duration(entry.get("duration")),
                 "thumbnail": thumbnail or f"https://i.ytimg.com/vi/{video_id}/default.jpg",
                 "url": f"https://www.youtube.com/watch?v={video_id}",

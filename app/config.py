@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     proxy_check_concurrency: int = 30
     stream_resolve_concurrency: int = 4
     proxy_attempts: int = 3
-    stream_cache_hours: int = 6
+    stream_cache_hours: int = 12
     direct_first: bool = True
     search_timeout_seconds: int = 15
     stream_resolve_timeout_seconds: int = 35
