@@ -1,1 +1,9 @@
 https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt
+
+
+
+
+socks5://77.110.103.146:1080
+socks5://101.36.104.239:10808
+
+

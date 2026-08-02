@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     debug: bool = True
     database_url: str = Field(
         "sqlite:///./storage/backend.db",
-        validation_alias=AliasChoices("PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
+        validation_alias=AliasChoices("POSTGRES_DB_URL", "PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
     )
     api_key: str = ""
     cors_origins: str = "http://localhost:3000,http://localhost:8787"

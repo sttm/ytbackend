@@ -294,7 +294,17 @@ async def playback_compat(
 
 @router.post("/download")
 async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
-    if payload.url:
+    if payload.stream_url:
+        metadata = {
+            "stream_url": payload.stream_url,
+            "video_id": payload.video_id or "",
+            "title": payload.title or "online-audio",
+            "uploader": payload.artist or "",
+            "ext": payload.ext or "m4a",
+            "filesize": payload.filesize or 0,
+            "proxy_used": "",
+        }
+    elif payload.url:
         try:
             metadata = await resolve_stream(
                 db,
@@ -306,16 +316,6 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
             raise HTTPException(status_code=504, detail="Download stream resolve timed out. Try again or refresh the proxy pool.") from error
         except Exception as error:
             raise HTTPException(status_code=502, detail=str(error)) from error
-    elif payload.stream_url:
-        metadata = {
-            "stream_url": payload.stream_url,
-            "video_id": payload.video_id or "",
-            "title": payload.title or "online-audio",
-            "uploader": payload.artist or "",
-            "ext": payload.ext or "m4a",
-            "filesize": payload.filesize or 0,
-            "proxy_used": "",
-        }
     else:
         raise HTTPException(status_code=400, detail="url or stream_url is required")
 

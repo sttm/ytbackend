@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -8,7 +9,8 @@ from app.config import get_settings
 
 settings = get_settings()
 database_url = (
-    os.environ.get("PRODUCERSCENTER_BACKEND_DATABASE_URL")
+    os.environ.get("POSTGRES_DB_URL")
+    or os.environ.get("PRODUCERSCENTER_BACKEND_DATABASE_URL")
     or os.environ.get("DATABASE_URL")
     or settings.database_url
 )
@@ -16,6 +18,23 @@ if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql+psycopg://", 1)
 elif database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+
+def with_default_postgres_sslmode(url: str) -> str:
+    if not url.startswith("postgresql+psycopg://"):
+        return url
+    parsed = urlsplit(url)
+    hostname = parsed.hostname or ""
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return url
+    query = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if "sslmode" in query:
+        return url
+    query["sslmode"] = "require"
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(query), parsed.fragment))
+
+
+database_url = with_default_postgres_sslmode(database_url)
 
 if database_url.startswith("sqlite:///"):
     db_path = database_url.replace("sqlite:///", "", 1)
