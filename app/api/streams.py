@@ -264,7 +264,7 @@ async def playback(
         "X-Track-Title": str(metadata.get("title") or "online-audio"),
         "X-Track-Artist": str(metadata.get("uploader") or ""),
         "X-File-Ext": str(ext),
-        "X-PC-Download-Mode": "stream-url-fast-path" if payload.stream_url else "resolved-stream",
+        "X-PC-Playback-Mode": "resolved-stream",
         "X-PC-Proxy-Used": str(metadata.get("proxy_used") or ""),
     }
     for header_name in ("Content-Length", "Content-Range", "Accept-Ranges"):
