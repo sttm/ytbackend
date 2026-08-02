@@ -65,6 +65,7 @@ class YoutubeUrlRequest(BaseModel):
     ext: str | None = None
     mime_type: str | None = None
     filesize: int | None = None
+    proxy_used: str | None = None
 
 
 class YoutubeSearchRequest(BaseModel):

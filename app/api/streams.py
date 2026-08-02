@@ -264,6 +264,8 @@ async def playback(
         "X-Track-Title": str(metadata.get("title") or "online-audio"),
         "X-Track-Artist": str(metadata.get("uploader") or ""),
         "X-File-Ext": str(ext),
+        "X-PC-Download-Mode": "stream-url-fast-path" if payload.stream_url else "resolved-stream",
+        "X-PC-Proxy-Used": str(metadata.get("proxy_used") or ""),
     }
     for header_name in ("Content-Length", "Content-Range", "Accept-Ranges"):
         value = response.headers.get(header_name)
@@ -302,7 +304,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
             "uploader": payload.artist or "",
             "ext": payload.ext or "m4a",
             "filesize": payload.filesize or 0,
-            "proxy_used": "",
+            "proxy_used": payload.proxy_used or "",
         }
     elif payload.url:
         try:
