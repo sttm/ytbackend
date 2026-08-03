@@ -24,14 +24,27 @@ router = APIRouter()
 settings = get_settings()
 
 
-def stream_fetch_headers(range_header: str | None = None) -> dict[str, str]:
+def stream_fetch_headers(range_header: str | None = None, client_ip: str | None = None) -> dict[str, str]:
     headers = {
         "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
         "Accept": "audio/*,*/*;q=0.8",
     }
     if range_header:
         headers["Range"] = range_header
+    if client_ip:
+        headers["X-Forwarded-For"] = client_ip
+        headers["X-Real-IP"] = client_ip
     return headers
+
+
+def request_client_ip(request: Request, explicit_ip: str | None = None) -> str | None:
+    if explicit_ip:
+        return explicit_ip.split(",")[0].strip() or None
+    for header_name in ("cf-connecting-ip", "x-real-ip", "x-forwarded-for"):
+        value = request.headers.get(header_name)
+        if value:
+            return value.split(",")[0].strip() or None
+    return request.client.host if request.client else None
 
 
 def client_session_for_proxy(proxy_url: str | None) -> tuple[aiohttp.ClientSession, dict[str, str]]:
@@ -97,15 +110,17 @@ def mark_proxy_media_success(db: Session, proxy_url: str | None, elapsed_ms: int
 
 @router.get("/api/stream")
 async def stream(
+    request: Request,
     url: str = Query(...),
     use_proxy: bool = True,
     force_refresh: bool = False,
+    client_ip: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     try:
         return {
             "status": "success",
-            **await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh),
+            **await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh, client_ip=request_client_ip(request, client_ip)),
         }
     except TimeoutError as error:
         raise HTTPException(status_code=504, detail="Stream resolve timed out. Try again or refresh the proxy pool.") from error
@@ -114,7 +129,7 @@ async def stream(
 
 
 @router.post("/api/streams/resolve")
-async def resolve_stream_post(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
+async def resolve_stream_post(request: Request, payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
     try:
         return {
             "status": "success",
@@ -123,6 +138,7 @@ async def resolve_stream_post(payload: YoutubeUrlRequest, db: Session = Depends(
                 payload.url,
                 use_proxy=payload.use_proxy,
                 force_refresh=payload.force_refresh,
+                client_ip=request_client_ip(request, payload.client_ip),
             ),
         }
     except TimeoutError as error:
@@ -132,8 +148,8 @@ async def resolve_stream_post(payload: YoutubeUrlRequest, db: Session = Depends(
 
 
 @router.post("/stream")
-async def stream_compat(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
-    return await resolve_stream_post(payload, db)
+async def stream_compat(request: Request, payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
+    return await resolve_stream_post(request, payload, db)
 
 
 @router.post("/search")
@@ -200,8 +216,8 @@ async def playlist_info(payload: YoutubePlaylistRequest):
 
 
 @router.post("/api/streams/download")
-async def download_stream_post(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
-    return await download(payload, db)
+async def download_stream_post(request: Request, payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
+    return await download(request, payload, db)
 
 
 @router.get("/api/playback")
@@ -210,10 +226,12 @@ async def playback(
     url: str = Query(...),
     use_proxy: bool = True,
     force_refresh: bool = False,
+    client_ip: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     try:
-        metadata = await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh)
+        resolved_client_ip = request_client_ip(request, client_ip)
+        metadata = await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh, client_ip=resolved_client_ip)
     except TimeoutError as error:
         raise HTTPException(status_code=504, detail="Playback stream resolve timed out. Try again or refresh the proxy pool.") from error
     except Exception as error:
@@ -225,7 +243,7 @@ async def playback(
 
     range_header = request.headers.get("range")
 
-    upstream_headers = stream_fetch_headers(range_header)
+    upstream_headers = stream_fetch_headers(range_header, resolved_client_ip)
     response = None
     session = None
     last_error: Exception | None = None
@@ -243,7 +261,7 @@ async def playback(
             mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
             if attempt == 0 and use_proxy:
                 try:
-                    metadata = await resolve_stream(db, url, use_proxy=True, force_refresh=True)
+                    metadata = await resolve_stream(db, url, use_proxy=True, force_refresh=True, client_ip=resolved_client_ip)
                     stream_url = metadata.get("stream_url")
                     if stream_url:
                         continue
@@ -289,13 +307,15 @@ async def playback_compat(
     url: str = Query(...),
     use_proxy: bool = True,
     force_refresh: bool = False,
+    client_ip: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
-    return await playback(request, url, use_proxy, force_refresh, db)
+    return await playback(request, url, use_proxy, force_refresh, client_ip, db)
 
 
 @router.post("/download")
-async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
+async def download(request: Request, payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
+    client_ip = request_client_ip(request, payload.client_ip)
     if payload.stream_url:
         metadata = {
             "stream_url": payload.stream_url,
@@ -313,6 +333,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
                 payload.url,
                 use_proxy=payload.use_proxy,
                 force_refresh=payload.force_refresh,
+                client_ip=client_ip,
             )
         except TimeoutError as error:
             raise HTTPException(status_code=504, detail="Download stream resolve timed out. Try again or refresh the proxy pool.") from error
@@ -325,7 +346,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
     if not stream_url:
         raise HTTPException(status_code=502, detail="stream URL was not resolved")
 
-    upstream_headers = stream_fetch_headers()
+    upstream_headers = stream_fetch_headers(client_ip=client_ip)
     response = None
     session = None
     last_error: Exception | None = None
@@ -343,7 +364,7 @@ async def download(payload: YoutubeUrlRequest, db: Session = Depends(get_db)):
             mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
             if attempt == 0 and payload.url and payload.use_proxy:
                 try:
-                    metadata = await resolve_stream(db, payload.url, use_proxy=True, force_refresh=True)
+                    metadata = await resolve_stream(db, payload.url, use_proxy=True, force_refresh=True, client_ip=client_ip)
                     stream_url = metadata.get("stream_url")
                     if stream_url:
                         continue

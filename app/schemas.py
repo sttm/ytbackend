@@ -58,6 +58,7 @@ class YoutubeUrlRequest(BaseModel):
     url: str
     use_proxy: bool = True
     force_refresh: bool = False
+    client_ip: str | None = None
     stream_url: str | None = None
     title: str | None = None
     artist: str | None = None

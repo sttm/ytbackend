@@ -164,15 +164,15 @@ def _enrich_stream_response(db: Session | None, response: dict) -> dict:
     return response
 
 
-async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
+async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False, client_ip: str | None = None) -> dict:
     async with stream_resolve_semaphore:
         return await asyncio.wait_for(
-            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh),
+            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh, client_ip),
             timeout=settings.stream_resolve_timeout_seconds,
         )
 
 
-def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False) -> dict:
+def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False, client_ip: str | None = None) -> dict:
     video_id = _stream_cache_key(youtube_url)
     started_total = time.perf_counter()
     logger.info(
@@ -193,7 +193,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
     if not use_proxy:
         try:
             logger.info("stream resolve direct attempt video_id=%s", video_id or "-")
-            result = extract_best_audio(youtube_url)
+            result = extract_best_audio(youtube_url, client_ip=client_ip)
             _cache_result(db, youtube_url, result, "")
             result_response = _response_from_result(result, cached=False, proxy_used="")
             result_response["url"] = youtube_url
@@ -216,7 +216,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
             try:
                 started = time.perf_counter()
                 logger.info("stream resolve proxy attempt video_id=%s proxy=%s", video_id or "-", proxy.proxy_url)
-                result = extract_best_audio(youtube_url, proxy.proxy_url)
+                result = extract_best_audio(youtube_url, proxy.proxy_url, client_ip=client_ip)
                 resolve_ms = int((time.perf_counter() - started) * 1000)
                 apply_check_result(
                     db,
@@ -260,7 +260,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
     if settings.direct_first:
         try:
             logger.info("stream resolve fallback direct attempt video_id=%s", video_id or "-")
-            result = extract_best_audio(youtube_url)
+            result = extract_best_audio(youtube_url, client_ip=client_ip)
             _cache_result(db, youtube_url, result, "")
             result_response = _response_from_result(result, cached=False, proxy_used="")
             result_response["url"] = youtube_url

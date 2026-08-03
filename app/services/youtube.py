@@ -135,7 +135,14 @@ def audio_format_score(fmt: dict) -> tuple[int, float, int, int]:
     )
 
 
-def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
+def extract_best_audio(youtube_url: str, proxy_url: str | None = None, client_ip: str | None = None) -> dict:
+    http_headers = {
+        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
+    }
+    if client_ip:
+        http_headers["X-Forwarded-For"] = client_ip
+        http_headers["X-Real-IP"] = client_ip
+
     opts = {
         "format": AUDIO_FORMAT_SELECTOR,
         "quiet": True,
@@ -147,6 +154,7 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None) -> dict:
         "extractor_retries": settings.ytdlp_retries,
         "skip_unavailable_fragments": True,
         "noplaylist": True,
+        "http_headers": http_headers,
         "logger": QuietYtDlpLogger(),
     }
     if proxy_url:
