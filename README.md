@@ -57,6 +57,15 @@ PRODUCERSCENTER_BACKEND_YTDLP_SOCKET_TIMEOUT_SECONDS=8
 PRODUCERSCENTER_BACKEND_YTDLP_RETRIES=0
 ```
 
+## Deployment security
+
+All resolver, proxy, catalogue, media, database-health and dashboard endpoints
+require `Authorization: Bearer <PRODUCERSCENTER_BACKEND_API_KEY>`. Only
+`GET /api/health` remains public for monitoring. Set a
+long random `PRODUCERSCENTER_BACKEND_API_KEY` in every Render service and set
+that node token only in the server-side Resolver Gateway pool; never expose it
+through a `NEXT_PUBLIC_*` variable.
+
 Why Render can behave differently from a local backend:
 
 - YouTube signs stream URLs for the resolver/proxy network path. A URL resolved from a Render egress IP is not equivalent to one resolved from your Mac.

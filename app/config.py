@@ -12,7 +12,9 @@ class Settings(BaseSettings):
 
     name: str = "ProducersCenter Backend"
     version: str = "0.1.0"
-    debug: bool = True
+    # Production must fail closed unless an explicit development environment
+    # opts into debug behaviour.
+    debug: bool = False
     database_url: str = Field(
         "sqlite:///./storage/backend.db",
         validation_alias=AliasChoices("POSTGRES_DB_URL", "PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
@@ -28,6 +30,7 @@ class Settings(BaseSettings):
     stream_resolve_timeout_seconds: int = 35
     ytdlp_socket_timeout_seconds: int = 8
     ytdlp_retries: int = 0
+    max_concurrent_requests: int = 4
 
 
 @lru_cache
