@@ -85,9 +85,9 @@ def best_proxies(db: Session, limit: int = 20) -> list[Proxy]:
         .filter(Proxy.is_verified == True)  # noqa: E712
         .filter((Proxy.cooldown_until == None) | (Proxy.cooldown_until < now))  # noqa: E711
         .order_by(
-            Proxy.youtube_success.desc(),
             (Proxy.download_ms > 0).desc(),
             Proxy.download_ms.asc(),
+            Proxy.youtube_success.desc(),
             Proxy.last_success_at.desc().nullslast(),
             Proxy.score.desc(),
             Proxy.youtube_fail.asc(),

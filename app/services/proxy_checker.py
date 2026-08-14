@@ -48,12 +48,12 @@ async def _audio_probe(proxy_url: str) -> tuple[bool, int, str]:
         async with session:
             async with session.get(
                 stream_url,
-                headers={"Range": "bytes=0-1023", "Accept": "audio/*,*/*;q=0.8"},
+                headers={"Range": "bytes=0-262143", "Accept": "audio/*,*/*;q=0.8"},
                 timeout=20,
                 ssl=False,
                 **kwargs,
             ) as response:
-                chunk = await response.content.read(1024)
+                chunk = await response.content.read(262_144)
                 return response.status in {200, 206} and bool(chunk), int((time.perf_counter() - started) * 1000), f"HTTP {response.status}"
     except Exception as error:
         return False, int((time.perf_counter() - started) * 1000), str(error)

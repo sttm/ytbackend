@@ -249,6 +249,14 @@ async def playback(
         try:
             started = time.perf_counter()
             response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
+            if response.status == 416 and range_header:
+                # Some Googlevideo CDN responses reject an initial open-ended range.
+                # Retry the same resolved URL as a regular stream before rejecting an
+                # otherwise working proxy.
+                response.close()
+                await session.close()
+                session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
+                response = await session.get(stream_url, headers=stream_fetch_headers(), **request_kwargs)
             response.raise_for_status()
             mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
             break
