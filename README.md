@@ -46,7 +46,9 @@ Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
 Environment:
 
 ```env
-DATABASE_URL=<Render internal PostgreSQL URL>
+# Use the same pooled PostgreSQL/Neon URL on every resolver node. The backend
+# creates its proxy/cache tables automatically on first boot.
+PRODUCERSCENTER_BACKEND_DATABASE_URL=<shared pooled PostgreSQL URL>
 PRODUCERSCENTER_BACKEND_CORS_ORIGINS=http://localhost:8787,https://producerscenter.app
 PRODUCERSCENTER_BACKEND_DIRECT_FIRST=true
 PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_CONCURRENCY=4

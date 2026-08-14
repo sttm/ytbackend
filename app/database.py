@@ -9,8 +9,8 @@ from app.config import get_settings
 
 settings = get_settings()
 database_url = (
-    os.environ.get("POSTGRES_DB_URL")
-    or os.environ.get("PRODUCERSCENTER_BACKEND_DATABASE_URL")
+    os.environ.get("PRODUCERSCENTER_BACKEND_DATABASE_URL")
+    or os.environ.get("POSTGRES_DB_URL")
     or os.environ.get("DATABASE_URL")
     or settings.database_url
 )

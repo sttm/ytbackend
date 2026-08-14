@@ -17,7 +17,9 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = Field(
         "sqlite:///./storage/backend.db",
-        validation_alias=AliasChoices("POSTGRES_DB_URL", "PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
+        # The backend-specific setting is intentional: it must win over a
+        # generic/stale DATABASE_URL inherited by a Render service.
+        validation_alias=AliasChoices("PRODUCERSCENTER_BACKEND_DATABASE_URL", "POSTGRES_DB_URL", "DATABASE_URL"),
     )
     api_key: str = ""
     # Browser-only dashboard access. This is intentionally separate from the
