@@ -136,12 +136,12 @@ def audio_format_score(fmt: dict) -> tuple[int, float, int, int]:
 
 
 def extract_best_audio(youtube_url: str, proxy_url: str | None = None, client_ip: str | None = None) -> dict:
+    # Do not forward the PWA visitor IP to YouTube. The stream URL must be
+    # resolved and fetched from the same Render/proxy egress, not from a spoofed
+    # client address (which is often 127.0.0.1 during local PWA development).
     http_headers = {
-        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     }
-    if client_ip:
-        http_headers["X-Forwarded-For"] = client_ip
-        http_headers["X-Real-IP"] = client_ip
 
     opts = {
         "format": AUDIO_FORMAT_SELECTOR,

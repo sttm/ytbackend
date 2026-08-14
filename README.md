@@ -51,7 +51,8 @@ PRODUCERSCENTER_BACKEND_CORS_ORIGINS=http://localhost:8787,https://producerscent
 PRODUCERSCENTER_BACKEND_DIRECT_FIRST=false
 PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_CONCURRENCY=4
 PRODUCERSCENTER_BACKEND_PROXY_ATTEMPTS=3
-PRODUCERSCENTER_BACKEND_STREAM_CACHE_HOURS=12
+# Temporary Googlevideo URLs are cached for 15 minutes by default.
+PRODUCERSCENTER_BACKEND_STREAM_CACHE_HOURS=0.25
 PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_TIMEOUT_SECONDS=35
 PRODUCERSCENTER_BACKEND_YTDLP_SOCKET_TIMEOUT_SECONDS=8
 PRODUCERSCENTER_BACKEND_YTDLP_RETRIES=0
@@ -78,7 +79,7 @@ Why Render can behave differently from a local backend:
 - Render datacenter IPs are more likely to hit YouTube bot/sign-in checks than residential/local traffic.
 - Public proxies that work from your Mac can be blocked, slow, or TLS-flaky from Render's network.
 - `yt-dlp` extraction is blocking work. Keep `PROXY_ATTEMPTS * YTDLP_SOCKET_TIMEOUT_SECONDS` below `STREAM_RESOLVE_TIMEOUT_SECONDS`.
-- For production playback, prefer proxy-first (`DIRECT_FIRST=false`) and keep attempts small. Bad proxies should fail fast and be rechecked by the dashboard.
+- For production playback, prefer proxy-first (`DIRECT_FIRST=false`) and keep attempts small. The dashboard's **deep** proxy check resolves a test audio URL and downloads its first byte through that proxy; use it before enabling a new source.
 
 Database check:
 
@@ -147,7 +148,7 @@ Proxy checks use three layers:
 
 1. HTTP ping through proxy.
 2. YouTube reachability through proxy.
-3. `yt-dlp` extraction through proxy.
+3. `yt-dlp` extraction and a first audio-byte download through the same proxy.
 
 ## Resilient MVP checklist
 

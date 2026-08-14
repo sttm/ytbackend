@@ -28,8 +28,11 @@ class Settings(BaseSettings):
     proxy_check_concurrency: int = 30
     stream_resolve_concurrency: int = 4
     proxy_attempts: int = 3
-    stream_cache_hours: int = 12
-    direct_first: bool = True
+    # Googlevideo URLs are short-lived and can be tied to the resolver egress
+    # IP. Keep their cache deliberately short and resolve through a verified
+    # proxy before attempting direct Render egress.
+    stream_cache_hours: float = 0.25
+    direct_first: bool = False
     search_timeout_seconds: int = 15
     stream_resolve_timeout_seconds: int = 35
     ytdlp_socket_timeout_seconds: int = 8

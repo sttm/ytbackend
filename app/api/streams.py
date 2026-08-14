@@ -24,16 +24,13 @@ router = APIRouter()
 settings = get_settings()
 
 
-def stream_fetch_headers(range_header: str | None = None, client_ip: str | None = None) -> dict[str, str]:
+def stream_fetch_headers(range_header: str | None = None) -> dict[str, str]:
     headers = {
-        "User-Agent": "Mozilla/5.0 ProducersCenter/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "audio/*,*/*;q=0.8",
     }
     if range_header:
         headers["Range"] = range_header
-    if client_ip:
-        headers["X-Forwarded-For"] = client_ip
-        headers["X-Real-IP"] = client_ip
     return headers
 
 
@@ -243,7 +240,7 @@ async def playback(
 
     range_header = request.headers.get("range")
 
-    upstream_headers = stream_fetch_headers(range_header, resolved_client_ip)
+    upstream_headers = stream_fetch_headers(range_header)
     response = None
     session = None
     last_error: Exception | None = None
@@ -346,7 +343,7 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
     if not stream_url:
         raise HTTPException(status_code=502, detail="stream URL was not resolved")
 
-    upstream_headers = stream_fetch_headers(client_ip=client_ip)
+    upstream_headers = stream_fetch_headers()
     response = None
     session = None
     last_error: Exception | None = None

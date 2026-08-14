@@ -2,8 +2,18 @@ https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt
 
 
 
-
+Free
 socks5://77.110.103.146:1080
 socks5://101.36.104.239:10808
 socks5://212.77.75.25:1088
+
+
+
+
+
+
+
+Work
+socks5://101.36.104.239:10808
+
 

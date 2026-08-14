@@ -5,10 +5,10 @@ import time
 from datetime import datetime
 
 import aiohttp
-import yt_dlp
 from aiohttp_socks import ProxyConnector
 
 from app.services.proxy_utils import classify_error
+from app.services.youtube import extract_best_audio
 
 PING_URL = "https://www.google.com/generate_204"
 YOUTUBE_URL = "https://www.youtube.com"
@@ -35,27 +35,28 @@ async def _http_get(proxy_url: str, url: str, timeout: int) -> tuple[bool, int, 
         return False, latency, str(error)
 
 
-def _run_ytdlp_probe(proxy_url: str) -> tuple[str, str]:
+async def _audio_probe(proxy_url: str) -> tuple[bool, int, str]:
+    """Verify both extraction and a real audio-byte fetch through the proxy."""
+    started = time.perf_counter()
     try:
-        opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "proxy": proxy_url,
-            "socket_timeout": 20,
-            "extract_flat": True,
-            "noplaylist": True,
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.extract_info(TEST_VIDEO, download=False)
-        return "verified", ""
+        loop = asyncio.get_running_loop()
+        metadata = await loop.run_in_executor(None, lambda: extract_best_audio(TEST_VIDEO, proxy_url))
+        stream_url = str(metadata.get("stream_url") or "")
+        if not stream_url:
+            return False, int((time.perf_counter() - started) * 1000), "No audio URL resolved"
+        session, kwargs = await _session_for(proxy_url)
+        async with session:
+            async with session.get(
+                stream_url,
+                headers={"Range": "bytes=0-1023", "Accept": "audio/*,*/*;q=0.8"},
+                timeout=20,
+                ssl=False,
+                **kwargs,
+            ) as response:
+                chunk = await response.content.read(1024)
+                return response.status in {200, 206} and bool(chunk), int((time.perf_counter() - started) * 1000), f"HTTP {response.status}"
     except Exception as error:
-        kind = classify_error(error)
-        if kind in {"youtube_rate_limit", "youtube_bot", "captcha"}:
-            return "youtube_blocked", str(error)
-        if kind == "timeout":
-            return "timeout", str(error)
-        return "dead", str(error)
+        return False, int((time.perf_counter() - started) * 1000), str(error)
 
 
 async def check_proxy(proxy_url: str) -> dict:
@@ -81,14 +82,25 @@ async def check_proxy(proxy_url: str) -> dict:
             "checked_at": datetime.utcnow(),
         }
 
-    loop = asyncio.get_running_loop()
-    status, error = await loop.run_in_executor(None, _run_ytdlp_probe, proxy_url)
+    audio_ok, audio_ms, audio_error = await _audio_probe(proxy_url)
+    if audio_ok:
+        return {
+            "proxy_url": proxy_url,
+            "status": "verified",
+            "layer": "audio-byte",
+            "latency_ms": max(ping_ms, youtube_ms, audio_ms),
+            "download_ms": audio_ms,
+            "error": "",
+            "checked_at": datetime.utcnow(),
+        }
+    kind = classify_error(Exception(audio_error))
+    status = "youtube_blocked" if kind in {"youtube_rate_limit", "youtube_bot", "captcha"} else "timeout" if kind == "timeout" else "dead"
     return {
         "proxy_url": proxy_url,
         "status": status,
-        "layer": "yt-dlp",
-        "latency_ms": max(ping_ms, youtube_ms),
-        "error": error,
+        "layer": "audio-byte",
+        "latency_ms": max(ping_ms, youtube_ms, audio_ms),
+        "error": audio_error,
         "checked_at": datetime.utcnow(),
     }
 
