@@ -136,6 +136,9 @@ function renderTracks(rows) {
 }
 
 async function refreshTracks() {
+  // The Tracks cache panel can be intentionally omitted from the dashboard.
+  // Do not let its absent controls prevent the proxy table from loading.
+  if (!$("tracks-table")) return;
   const limit = 30;
   const offset = (state.tracksPage - 1) * limit;
   const params = new URLSearchParams({
@@ -347,69 +350,71 @@ $("status-filter").addEventListener("change", async () => {
   await refresh();
 });
 
-$("refresh-tracks").addEventListener("click", async () => {
-  state.tracksPage = 1;
-  await refreshTracks();
-});
-
-$("clear-tracks").addEventListener("click", async (event) => {
-  if (!confirm("Clear all tracks metadata, search query cache, and usage history?")) return;
-  await withButtonBusy(event.currentTarget, "Clearing...", async () => {
-    logStep("Clear tracks cache start");
-    const result = await api("/api/tracks", { method: "DELETE" });
-    setImportOutput("Tracks cache cleared.", result);
+if ($("tracks-table")) {
+  $("refresh-tracks").addEventListener("click", async () => {
     state.tracksPage = 1;
-    await refresh();
+    await refreshTracks();
   });
-});
 
-$("tracks-table").addEventListener("click", async (event) => {
-  const button = event.target.closest("button[data-track-delete-id]");
-  if (!button) return;
-  const provider = button.dataset.trackDeleteProvider;
-  const id = button.dataset.trackDeleteId;
-  if (!provider || !id) return;
-  if (!confirm(`Delete ${provider}:${id} from Tracks cache?`)) return;
-  button.disabled = true;
-  button.textContent = "Deleting...";
-  try {
-    logStep("Delete track cache item", { provider, id });
-    const result = await api(`/api/tracks/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`, { method: "DELETE" });
-    setImportOutput("Track cache item deleted.", result);
-    await refresh();
-  } catch (error) {
-    setImportOutput(`Error: ${error.message || error}`);
-  } finally {
-    button.disabled = false;
-    button.textContent = "Delete";
-  }
-});
+  $("clear-tracks").addEventListener("click", async (event) => {
+    if (!confirm("Clear all tracks metadata, search query cache, and usage history?")) return;
+    await withButtonBusy(event.currentTarget, "Clearing...", async () => {
+      logStep("Clear tracks cache start");
+      const result = await api("/api/tracks", { method: "DELETE" });
+      setImportOutput("Tracks cache cleared.", result);
+      state.tracksPage = 1;
+      await refresh();
+    });
+  });
 
-$("track-provider").addEventListener("change", async () => {
-  state.tracksPage = 1;
-  await refreshTracks();
-});
+  $("tracks-table").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-track-delete-id]");
+    if (!button) return;
+    const provider = button.dataset.trackDeleteProvider;
+    const id = button.dataset.trackDeleteId;
+    if (!provider || !id) return;
+    if (!confirm(`Delete ${provider}:${id} from Tracks cache?`)) return;
+    button.disabled = true;
+    button.textContent = "Deleting...";
+    try {
+      logStep("Delete track cache item", { provider, id });
+      const result = await api(`/api/tracks/${encodeURIComponent(provider)}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setImportOutput("Track cache item deleted.", result);
+      await refresh();
+    } catch (error) {
+      setImportOutput(`Error: ${error.message || error}`);
+    } finally {
+      button.disabled = false;
+      button.textContent = "Delete";
+    }
+  });
 
-$("track-sort").addEventListener("change", async () => {
-  state.tracksPage = 1;
-  await refreshTracks();
-});
+  $("track-provider").addEventListener("change", async () => {
+    state.tracksPage = 1;
+    await refreshTracks();
+  });
 
-$("track-search").addEventListener("keydown", async (event) => {
-  if (event.key !== "Enter") return;
-  state.tracksPage = 1;
-  await refreshTracks();
-});
+  $("track-sort").addEventListener("change", async () => {
+    state.tracksPage = 1;
+    await refreshTracks();
+  });
 
-$("tracks-prev-page").addEventListener("click", async () => {
-  state.tracksPage = Math.max(1, state.tracksPage - 1);
-  await refreshTracks();
-});
+  $("track-search").addEventListener("keydown", async (event) => {
+    if (event.key !== "Enter") return;
+    state.tracksPage = 1;
+    await refreshTracks();
+  });
 
-$("tracks-next-page").addEventListener("click", async () => {
-  state.tracksPage = Math.min(state.tracksPages, state.tracksPage + 1);
-  await refreshTracks();
-});
+  $("tracks-prev-page").addEventListener("click", async () => {
+    state.tracksPage = Math.max(1, state.tracksPage - 1);
+    await refreshTracks();
+  });
+
+  $("tracks-next-page").addEventListener("click", async () => {
+    state.tracksPage = Math.min(state.tracksPages, state.tracksPage + 1);
+    await refreshTracks();
+  });
+}
 
 refresh().catch((error) => {
   console.error(error);
