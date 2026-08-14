@@ -190,7 +190,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
 
     errors: list[str] = []
 
-    if not use_proxy:
+    if settings.direct_first or not use_proxy:
         try:
             logger.info("stream resolve direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url, client_ip=client_ip)
@@ -257,7 +257,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
                     },
                 )
 
-    if settings.direct_first:
+    if not settings.direct_first:
         try:
             logger.info("stream resolve fallback direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url, client_ip=client_ip)

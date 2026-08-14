@@ -48,7 +48,7 @@ Environment:
 ```env
 DATABASE_URL=<Render internal PostgreSQL URL>
 PRODUCERSCENTER_BACKEND_CORS_ORIGINS=http://localhost:8787,https://producerscenter.app
-PRODUCERSCENTER_BACKEND_DIRECT_FIRST=false
+PRODUCERSCENTER_BACKEND_DIRECT_FIRST=true
 PRODUCERSCENTER_BACKEND_STREAM_RESOLVE_CONCURRENCY=4
 PRODUCERSCENTER_BACKEND_PROXY_ATTEMPTS=3
 # Temporary Googlevideo URLs are cached for 15 minutes by default.
@@ -79,7 +79,7 @@ Why Render can behave differently from a local backend:
 - Render datacenter IPs are more likely to hit YouTube bot/sign-in checks than residential/local traffic.
 - Public proxies that work from your Mac can be blocked, slow, or TLS-flaky from Render's network.
 - `yt-dlp` extraction is blocking work. Keep `PROXY_ATTEMPTS * YTDLP_SOCKET_TIMEOUT_SECONDS` below `STREAM_RESOLVE_TIMEOUT_SECONDS`.
-- For production playback, prefer proxy-first (`DIRECT_FIRST=false`) and keep attempts small. The dashboard's **deep** proxy check resolves a test audio URL and reads up to 256 KiB through that proxy; use it before enabling a new source.
+- For normal PWA playback, prefer direct-first (`DIRECT_FIRST=true`): Render only resolves a temporary URL and the browser streams from the CDN. Proxy playback remains a fallback when a direct URL is rejected. The dashboard's **deep** proxy check resolves a test audio URL and reads up to 256 KiB through that proxy.
 
 Database check:
 

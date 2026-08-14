@@ -391,7 +391,9 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
         "X-Track-Artist": str(metadata.get("uploader") or ""),
         "X-File-Ext": str(ext),
     }
-    content_length = response.headers.get("Content-Length") or str(metadata.get("filesize") or "")
+    # Never advertise yt-dlp's estimated size as HTTP Content-Length. It makes
+    # the client progress bar jump from a partial value straight to 100%.
+    content_length = response.headers.get("Content-Length")
     if content_length:
         headers["Content-Length"] = content_length
     for header_name in ("Content-Range", "Accept-Ranges"):
