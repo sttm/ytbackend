@@ -20,6 +20,10 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("POSTGRES_DB_URL", "PRODUCERSCENTER_BACKEND_DATABASE_URL", "DATABASE_URL"),
     )
     api_key: str = ""
+    # Browser-only dashboard access. This is intentionally separate from the
+    # gateway-to-resolver API key and is never sent to frontend JavaScript.
+    dashboard_password: str = ""
+    dashboard_session_ttl_seconds: int = 43_200
     cors_origins: str = "http://localhost:3000,http://localhost:8787"
     proxy_check_concurrency: int = 30
     stream_resolve_concurrency: int = 4

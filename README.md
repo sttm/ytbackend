@@ -59,12 +59,18 @@ PRODUCERSCENTER_BACKEND_YTDLP_RETRIES=0
 
 ## Deployment security
 
-All resolver, proxy, catalogue, media, database-health and dashboard endpoints
-require `Authorization: Bearer <PRODUCERSCENTER_BACKEND_API_KEY>`. Only
-`GET /api/health` remains public for monitoring. Set a
+All resolver, proxy, catalogue, media and database-health endpoints require
+`Authorization: Bearer <PRODUCERSCENTER_BACKEND_API_KEY>` from the Gateway.
+The browser dashboard uses its own password and an HttpOnly session cookie.
+Only `GET /api/health` remains public for monitoring. Set a
 long random `PRODUCERSCENTER_BACKEND_API_KEY` in every Render service and set
 that node token only in the server-side Resolver Gateway pool; never expose it
 through a `NEXT_PUBLIC_*` variable.
+
+Set a different `PRODUCERSCENTER_BACKEND_DASHBOARD_PASSWORD` in every Render
+service to enable `/dashboard/login`. It must not be a node API key, Gateway
+key, registry key or any other shared secret. The login creates a 12-hour
+HttpOnly, `SameSite=Strict` session; use **Sign out** when finished.
 
 Why Render can behave differently from a local backend:
 
@@ -94,10 +100,10 @@ Or:
 ./run.sh
 ```
 
-Dashboard:
+Dashboard login:
 
 ```txt
-http://localhost:8010/dashboard
+http://localhost:8010/dashboard/login
 ```
 
 Stream API:

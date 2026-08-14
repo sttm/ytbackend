@@ -15,9 +15,10 @@ stream URL и offline download, а также содержит управлен�
   Gateway, а не URL конкретного backend-а. Исходники gateway находятся в
   `services/resolver-gateway`; его ещё нужно развернуть и заполнить pool.
 - В backend нет тестового набора и `pytest` не указан в `requirements.txt`.
-- Private resolver, proxy-management, catalogue, media и dashboard endpoints
-  требуют bearer token. Публичным остаётся только `/api/health`, чтобы gateway
-  мог определить capacity node.
+- Private resolver, proxy-management, catalogue и media endpoints требуют
+  bearer token от Gateway. Dashboard использует отдельный пароль и HttpOnly
+  browser session; ключ ноды не передаётся в браузер. Публичным остаётся только
+  `/api/health`, чтобы gateway мог определить capacity node.
 - Каждый Render node держит локальный semaphore
   `PRODUCERSCENTER_BACKEND_MAX_CONCURRENT_REQUESTS`; при заполнении
   `/api/health` возвращает `503`, и gateway выбирает следующий node.
@@ -83,7 +84,7 @@ Neon с транзакционным lease. KV сам по себе не под�
 
 - [ ] Выбрать и зафиксировать этот FastAPI сервис как каноническую resolver implementation; архивировать остальные варианты.
 - [ ] Описать версионированный API contract для search, playlist, stream, playback, download, health, usage и ошибок.
-- [ ] Добавить service-to-service auth для всех resolver и proxy-admin endpoints; закрыть dashboard и client proxy export.
+- [x] Добавить service-to-service auth для всех resolver и proxy-admin endpoints; закрыть dashboard и client proxy export.
 - [ ] Установить `debug=false` по умолчанию в production и безопасный CORS allow-list.
 - [ ] Добавить pytest, unit/integration tests и CI; минимум проверить timeout, provider error и unauthenticated request.
 - [ ] Создать Cloudflare gateway и заменить в PWA один direct Render URL на URL gateway.

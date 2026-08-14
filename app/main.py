@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.health import router as health_router
@@ -14,7 +14,15 @@ from app.api.streams import router as streams_router
 from app.api.tracks import router as tracks_router
 from app.config import get_settings
 from app.database import init_db
-from app.security import require_api_key
+from app.security import (
+    DASHBOARD_SESSION_COOKIE,
+    create_dashboard_session,
+    dashboard_password_configured,
+    dashboard_password_matches,
+    dashboard_session_is_valid,
+    require_api_key,
+    require_dashboard_session,
+)
 from app.services.capacity import ResolverCapacityMiddleware, capacity
 
 settings = get_settings()
@@ -55,6 +63,62 @@ def root():
     }
 
 
-@app.get("/dashboard", dependencies=[Depends(require_api_key)])
+@app.get("/dashboard/login", response_class=HTMLResponse)
+def dashboard_login_page(request: Request):
+    if dashboard_session_is_valid(request.cookies.get(DASHBOARD_SESSION_COOKIE)):
+        return RedirectResponse("/dashboard", status_code=303)
+    if not dashboard_password_configured():
+        return HTMLResponse(
+            "<h1>Dashboard authentication is not configured.</h1><p>Set PRODUCERSCENTER_BACKEND_DASHBOARD_PASSWORD in Render and redeploy this service.</p>",
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
+        )
+    invalid_password = request.query_params.get("error") == "invalid"
+    error_message = '<p class="error">Incorrect password. Try again.</p>' if invalid_password else ""
+    return HTMLResponse(
+        dashboard_login_html(error_message),
+        headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"},
+    )
+
+
+@app.post("/dashboard/login")
+def dashboard_login(request: Request, password: str = Form(default="")):
+    if not dashboard_password_configured():
+        raise HTTPException(status_code=503, detail="Dashboard authentication is not configured.")
+    if not dashboard_password_matches(password):
+        return RedirectResponse("/dashboard/login?error=invalid", status_code=303)
+    response = RedirectResponse("/dashboard", status_code=303)
+    response.headers["Cache-Control"] = "no-store"
+    response.set_cookie(
+        key=DASHBOARD_SESSION_COOKIE,
+        value=create_dashboard_session(),
+        max_age=max(300, settings.dashboard_session_ttl_seconds),
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
+@app.post("/dashboard/logout")
+def dashboard_logout():
+    response = RedirectResponse("/dashboard/login", status_code=303)
+    response.delete_cookie(DASHBOARD_SESSION_COOKIE, path="/")
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/dashboard", dependencies=[Depends(require_dashboard_session)])
 def dashboard():
-    return FileResponse(static_dir / "index.html")
+    return FileResponse(static_dir / "index.html", headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"})
+
+
+def dashboard_login_html(error_message: str) -> str:
+    return f"""<!doctype html>
+<html lang=\"en\"><head><meta charset=\"utf-8\" /><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+<title>Backend dashboard login</title><link rel=\"stylesheet\" href=\"/static/style.css\" /></head>
+<body class=\"login-page\"><main class=\"login-card\"><p class=\"eyebrow\">ProducersCenter</p><h1>Backend dashboard</h1>
+<p>Enter the dashboard password. This is separate from the resolver node key.</p>{error_message}
+<form method=\"post\" action=\"/dashboard/login\"><label for=\"password\">Dashboard password</label><input id=\"password\" name=\"password\" type=\"password\" autocomplete=\"current-password\" required autofocus /><button type=\"submit\">Sign in</button></form>
+</main></body></html>"""
