@@ -14,7 +14,7 @@ from app.models import Proxy, ProxySource
 from app.schemas import ProxyCheckRequest, ProxyImportRequest, ProxySourceCreate, ProxyUrlImportRequest
 from app.services.proxy_checker import check_proxy, check_proxy_fast
 from app.services.limits import proxy_check_semaphore
-from app.services.proxy_store import apply_check_result, best_proxies, upsert_proxy
+from app.services.proxy_store import apply_check_result, best_proxies, create_proxy_if_missing, upsert_proxy
 from app.services.proxy_utils import normalize_proxy
 
 router = APIRouter()
@@ -118,13 +118,14 @@ async def import_proxy_values(
     created = 0
     updated = 0
     duplicates = 0
+    skipped_existing = 0
     checked = 0
     alive = 0
     dead = 0
     skipped_unchecked = 0
     errors: list[str] = []
     seen: set[str] = set()
-    candidates: list[str] = []
+    normalized_values: list[str] = []
     for item in proxies:
         try:
             normalized = normalize_proxy(item, protocol)
@@ -135,21 +136,47 @@ async def import_proxy_values(
             duplicates += 1
             continue
         seen.add(normalized)
-        candidates.append(normalized)
+        normalized_values.append(normalized)
+
+    # Never spend proxy-check capacity on an address already present in the
+    # shared database. This is both faster and avoids overwriting its health
+    # history when a source repeats the same large list.
+    existing_urls = {
+        value
+        for (value,) in db.query(Proxy.proxy_url).filter(Proxy.proxy_url.in_(normalized_values)).all()
+    } if normalized_values else set()
+    candidates = [value for value in normalized_values if value not in existing_urls]
+    skipped_existing = len(existing_urls)
 
     logger.info(
         "proxy import parsed loaded=%s unique=%s duplicates=%s check_before_add=%s mode=%s limit=%s",
         len(proxies),
-        len(candidates),
+        len(normalized_values),
         duplicates,
         check_before_add,
         check_mode,
         check_limit,
     )
 
+    # Persist each previously unseen proxy before it is checked. If a large
+    # request is interrupted, the durable "new" records can be continued via
+    # /api/proxies/check-batch instead of losing the completed import.
+    inserted_candidates: list[str] = []
+    for normalized in candidates:
+        try:
+            _, was_created = create_proxy_if_missing(db, normalized, source, "auto")
+        except Exception as error:
+            errors.append(f"{normalized}: {error}")
+            continue
+        if was_created:
+            created += 1
+            inserted_candidates.append(normalized)
+        else:
+            skipped_existing += 1
+
     if check_before_add:
-        to_check = candidates[:check_limit]
-        skipped_unchecked = max(0, len(candidates) - len(to_check))
+        to_check = inserted_candidates[:check_limit]
+        skipped_unchecked = max(0, len(inserted_candidates) - len(to_check))
         checked = len(to_check)
 
         async def check_candidate(normalized: str) -> tuple[str, dict | None, str | None]:
@@ -161,45 +188,39 @@ async def import_proxy_values(
                 return normalized, None, str(error)
 
         logger.info("proxy import check start count=%s concurrency=semaphore", len(to_check))
-        checked_results = await asyncio.gather(*(check_candidate(candidate) for candidate in to_check))
-        logger.info("proxy import check complete count=%s", len(checked_results))
-
-        for normalized, result, error in checked_results:
+        for completed in asyncio.as_completed([check_candidate(candidate) for candidate in to_check]):
+            normalized, result, error = await completed
+            row = db.query(Proxy).filter(Proxy.proxy_url == normalized).first()
+            if row is None:
+                errors.append(f"{normalized}: proxy record disappeared during check")
+                continue
             if error:
                 dead += 1
                 errors.append(f"{normalized}: {error}")
+                apply_check_result(db, row, {"status": "dead", "error": error})
                 continue
-            if not result or result["status"] != "verified":
+            if not result:
                 dead += 1
-                if result and result.get("error"):
-                    errors.append(f"{normalized}: {result.get('error')}")
+                apply_check_result(db, row, {"status": "dead", "error": "Empty proxy check result"})
                 continue
             try:
-                row, was_created = upsert_proxy(db, normalized, source, "auto")
                 apply_check_result(db, row, result)
-                alive += 1
-                if was_created:
-                    created += 1
+                if result["status"] == "verified":
+                    alive += 1
                 else:
-                    updated += 1
+                    dead += 1
+                    if result.get("error"):
+                        errors.append(f"{normalized}: {result.get('error')}")
             except Exception as error:
                 errors.append(f"{normalized}: {error}")
-    else:
-        for normalized in candidates:
-            try:
-                _, was_created = upsert_proxy(db, normalized, source, "auto")
-            except Exception as error:
-                errors.append(f"{normalized}: {error}")
-                continue
-            if was_created:
-                created += 1
-            else:
-                updated += 1
+
+        logger.info("proxy import check complete count=%s", len(to_check))
 
     logger.info(
-        "proxy import stored created=%s updated=%s alive=%s dead=%s skipped=%s errors=%s",
+        "proxy import stored created=%s updated=%s existing=%s alive=%s dead=%s unchecked=%s errors=%s",
         created,
         updated,
+        skipped_existing,
         alive,
         dead,
         skipped_unchecked,
@@ -208,8 +229,9 @@ async def import_proxy_values(
 
     return {
         "loaded": len(proxies),
-        "unique": len(candidates),
+        "unique": len(normalized_values),
         "duplicates": duplicates,
+        "skipped_existing": skipped_existing,
         "created": created,
         "updated": updated,
         "checked": checked,
@@ -279,13 +301,16 @@ async def check_batch(
     )
 
     async def worker(row: Proxy):
-        async with proxy_check_semaphore:
-            result = await check_proxy(row.proxy_url)
-        return row.id, result
+        try:
+            async with proxy_check_semaphore:
+                result = await check_proxy(row.proxy_url)
+            return row.id, result
+        except Exception as error:
+            return row.id, {"status": "dead", "error": str(error)}
 
-    results = await asyncio.gather(*(worker(row) for row in rows))
     output = []
-    for proxy_id, result in results:
+    for completed in asyncio.as_completed([worker(row) for row in rows]):
+        proxy_id, result = await completed
         row = db.query(Proxy).filter(Proxy.id == proxy_id).first()
         if row:
             output.append(serialize_proxy(apply_check_result(db, row, result)))
@@ -358,6 +383,7 @@ async def fetch_sources(
         "loaded": 0,
         "unique": 0,
         "duplicates": 0,
+        "skipped_existing": 0,
         "created": 0,
         "updated": 0,
         "checked": 0,

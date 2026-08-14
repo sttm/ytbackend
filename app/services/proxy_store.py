@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import Proxy
@@ -29,6 +30,41 @@ def upsert_proxy(db: Session, raw_proxy: str, source: str = "manual", protocol: 
     db.commit()
     db.refresh(row)
     return row, created
+
+
+def create_proxy_if_missing(db: Session, raw_proxy: str, source: str = "manual", protocol: str = "auto") -> tuple[Proxy, bool]:
+    """Create a proxy once without mutating an existing record.
+
+    Import jobs use this instead of upsert so a repeated large list does not
+    reactivate, overwrite or re-check entries that are already in the shared
+    database. The unique constraint also makes concurrent imports safe.
+    """
+    proxy_url = normalize_proxy(raw_proxy, protocol)
+    existing = db.query(Proxy).filter(Proxy.proxy_url == proxy_url).first()
+    if existing is not None:
+        return existing, False
+
+    host, port = proxy_host_port(proxy_url)
+    row = Proxy(
+        proxy_url=proxy_url,
+        protocol=proxy_url.split("://", 1)[0],
+        host=host,
+        port=port,
+        source=source,
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        # A second Render node may have inserted this proxy between the lookup
+        # and commit. Treat it as an existing entry rather than failing import.
+        db.rollback()
+        existing = db.query(Proxy).filter(Proxy.proxy_url == proxy_url).first()
+        if existing is not None:
+            return existing, False
+        raise
+    db.refresh(row)
+    return row, True
 
 
 def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:

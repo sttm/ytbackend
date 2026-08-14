@@ -143,8 +143,13 @@ POST /api/proxy-sources/fetch
 }
 ```
 
-When `check_before_add` is enabled, the backend checks each proxy before saving it.
-Dead proxies are skipped, duplicates are counted, and only verified proxies are stored.
+Every new proxy is saved immediately with status `new`, before its check begins.
+Each completed check is then written independently; an interrupted large import
+therefore leaves resumable `new` records instead of losing its whole result.
+Existing normalized proxy URLs are skipped without resetting their health history;
+the response reports them as `skipped_existing`. Failed checks are retained with
+their status/error for diagnostics, while only verified active proxies are used
+for stream resolving.
 
 Proxy checks use three layers:
 
