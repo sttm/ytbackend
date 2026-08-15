@@ -5,10 +5,11 @@ import asyncio
 import logging
 import json
 from datetime import datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import StreamCache
+from app.models import Proxy, StreamCache
 from app.services.limits import stream_resolve_semaphore
 from app.services.proxy_store import apply_check_result, best_proxies
 from app.services.proxy_utils import classify_error
@@ -27,16 +28,77 @@ def _stream_cache_key(url: str) -> str:
 def _cached_stream(db: Session, cache_key: str | None) -> StreamCache | None:
     if not cache_key:
         return None
-    return (
+    rows = (
         db.query(StreamCache)
         .filter(StreamCache.video_id == cache_key)
         .filter(StreamCache.expires_at > datetime.utcnow())
         .order_by(StreamCache.created_at.desc())
-        .first()
+        .all()
     )
+    for row in rows:
+        if _can_reuse_cached_stream(db, row):
+            return row
+    return None
 
 
-def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str = "") -> StreamCache:
+def _can_reuse_cached_stream(db: Session, row: StreamCache) -> bool:
+    now = datetime.utcnow()
+    signed_expiry = _signed_stream_expiry(row.stream_url)
+    if signed_expiry and signed_expiry <= now + timedelta(seconds=settings.stream_cache_expiry_safety_seconds):
+        logger.info("stream cache skipped video_id=%s reason=signed_url_expiring", row.video_id)
+        return False
+
+    proxy_url = (row.proxy_used or "").strip()
+    if not proxy_url:
+        if not settings.stream_cache_reuse_direct:
+            logger.info("stream cache skipped video_id=%s reason=direct_egress_mismatch", row.video_id)
+            return False
+        return True
+
+    proxy = db.query(Proxy).filter(Proxy.proxy_url == proxy_url).first()
+    if proxy is None or not proxy.is_active or not proxy.is_verified:
+        logger.info("stream cache skipped video_id=%s reason=proxy_not_verified", row.video_id)
+        return False
+    if proxy.cooldown_until and proxy.cooldown_until > now:
+        logger.info("stream cache skipped video_id=%s reason=proxy_in_cooldown", row.video_id)
+        return False
+    last_good_at = proxy.last_success_at or proxy.last_checked_at
+    if last_good_at is None or last_good_at < now - timedelta(seconds=settings.proxy_cache_health_seconds):
+        logger.info("stream cache skipped video_id=%s reason=proxy_health_stale", row.video_id)
+        return False
+    return True
+
+
+def _signed_stream_expiry(stream_url: str) -> datetime | None:
+    """Return Googlevideo's signed URL deadline when it is present and valid."""
+    try:
+        raw_expiry = parse_qs(urlparse(stream_url).query).get("expire", [""])[0]
+        expiry = int(raw_expiry)
+        if expiry <= 0:
+            return None
+        return datetime.utcfromtimestamp(expiry)
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str = "") -> StreamCache | None:
+    # Do not retain direct Googlevideo links unless an operator explicitly opts
+    # in. A later PWA request originates from a different egress IP, so this
+    # cache is more likely to create a failed playback than save useful work.
+    if not proxy_used and not settings.stream_cache_reuse_direct:
+        return None
+    now = datetime.utcnow()
+    cache_deadline = now + timedelta(hours=min(settings.stream_cache_hours, settings.stream_cache_max_hours))
+    signed_expiry = _signed_stream_expiry(result["stream_url"])
+    if signed_expiry:
+        cache_deadline = min(
+            cache_deadline,
+            signed_expiry - timedelta(seconds=settings.stream_cache_expiry_safety_seconds),
+        )
+    # Do not create an immediately expired row when the resolver returned an
+    # almost-expired URL. The next request must perform a fresh extraction.
+    if cache_deadline <= now:
+        cache_deadline = now
     row = StreamCache(
         video_id=result.get("video_id") or _stream_cache_key(youtube_url),
         youtube_url=youtube_url,
@@ -57,7 +119,7 @@ def _cache_result(db: Session, youtube_url: str, result: dict, proxy_used: str =
         sample_rate=result.get("sample_rate") or 0,
         filesize=result.get("filesize") or 0,
         proxy_used=proxy_used,
-        expires_at=datetime.utcnow() + timedelta(hours=settings.stream_cache_hours),
+        expires_at=cache_deadline,
     )
     db.add(row)
     db.commit()

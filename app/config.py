@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     # Googlevideo URLs are short-lived. Resolve directly first so the PWA can
     # play client-to-CDN without proxying media through Render.
     stream_cache_hours: float = 0.25
+    # A signed URL's own `expire` value is authoritative. This is only a hard
+    # upper bound for URLs that do not expose one; it is not a promise that a
+    # YouTube URL will remain usable for six hours.
+    stream_cache_max_hours: float = 6.0
+    stream_cache_expiry_safety_seconds: int = 120
+    # A cached URL obtained through a proxy is reusable only while that exact
+    # proxy has a recent successful YouTube/media check.
+    proxy_cache_health_seconds: int = 300
+    # A direct URL was resolved from a Render egress but is consumed by a PWA
+    # browser from another egress. Keep this off by default.
+    stream_cache_reuse_direct: bool = False
     direct_first: bool = True
     search_timeout_seconds: int = 15
     stream_resolve_timeout_seconds: int = 35
