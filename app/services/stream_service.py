@@ -226,23 +226,39 @@ def _enrich_stream_response(db: Session | None, response: dict) -> dict:
     return response
 
 
-async def resolve_stream(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False, client_ip: str | None = None) -> dict:
+async def resolve_stream(
+    db: Session,
+    youtube_url: str,
+    use_proxy: bool = True,
+    force_refresh: bool = False,
+    client_ip: str | None = None,
+    timeout_seconds: int | None = None,
+    proxy_attempts: int | None = None,
+) -> dict:
     async with stream_resolve_semaphore:
         return await asyncio.wait_for(
-            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh, client_ip),
-            timeout=settings.stream_resolve_timeout_seconds,
+            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh, client_ip, proxy_attempts),
+            timeout=timeout_seconds or settings.stream_resolve_timeout_seconds,
         )
 
 
-def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True, force_refresh: bool = False, client_ip: str | None = None) -> dict:
+def _resolve_stream_locked(
+    db: Session,
+    youtube_url: str,
+    use_proxy: bool = True,
+    force_refresh: bool = False,
+    client_ip: str | None = None,
+    proxy_attempts: int | None = None,
+) -> dict:
     video_id = _stream_cache_key(youtube_url)
+    effective_proxy_attempts = max(1, proxy_attempts or settings.proxy_attempts)
     started_total = time.perf_counter()
     logger.info(
         "stream resolve start video_id=%s use_proxy=%s force_refresh=%s proxy_attempts=%s",
         video_id or "-",
         use_proxy,
         force_refresh,
-        settings.proxy_attempts,
+        effective_proxy_attempts,
     )
     if not force_refresh:
         cached = _cached_stream(db, video_id)
@@ -272,7 +288,7 @@ def _resolve_stream_locked(db: Session, youtube_url: str, use_proxy: bool = True
                 raise
 
     if use_proxy:
-        proxies = best_proxies(db, settings.proxy_attempts)
+        proxies = best_proxies(db, effective_proxy_attempts)
         logger.info("stream resolve proxy candidates video_id=%s count=%s", video_id or "-", len(proxies))
         for proxy in proxies:
             try:

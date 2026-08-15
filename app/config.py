@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     direct_first: bool = True
     search_timeout_seconds: int = 15
     stream_resolve_timeout_seconds: int = 35
+    # The playback fallback must fail fast. The PWA tries the direct CDN URL
+    # first, so a proxy path is recovery rather than the normal data plane.
+    playback_resolve_timeout_seconds: int = 15
+    playback_proxy_attempts: int = 1
+    playback_proxy_connect_timeout_seconds: int = 6
+    playback_proxy_read_timeout_seconds: int = 15
     ytdlp_socket_timeout_seconds: int = 8
     ytdlp_retries: int = 0
     max_concurrent_requests: int = 4

@@ -44,8 +44,16 @@ def request_client_ip(request: Request, explicit_ip: str | None = None) -> str |
     return request.client.host if request.client else None
 
 
-def client_session_for_proxy(proxy_url: str | None) -> tuple[aiohttp.ClientSession, dict[str, str]]:
-    timeout = aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
+def client_session_for_proxy(proxy_url: str | None, *, playback: bool = False) -> tuple[aiohttp.ClientSession, dict[str, str]]:
+    timeout = (
+        aiohttp.ClientTimeout(
+            total=settings.playback_resolve_timeout_seconds + settings.playback_proxy_read_timeout_seconds,
+            sock_connect=settings.playback_proxy_connect_timeout_seconds,
+            sock_read=settings.playback_proxy_read_timeout_seconds,
+        )
+        if playback
+        else aiohttp.ClientTimeout(total=None, sock_connect=20, sock_read=60)
+    )
     normalized_proxy = (proxy_url or "").strip()
     request_kwargs: dict[str, str] = {}
     ssl_context = ssl.create_default_context(cafile=certifi.where())
@@ -111,13 +119,22 @@ async def stream(
     url: str = Query(...),
     use_proxy: bool = True,
     force_refresh: bool = False,
+    fast: bool = False,
     client_ip: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     try:
         return {
             "status": "success",
-            **await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh, client_ip=request_client_ip(request, client_ip)),
+            **await resolve_stream(
+                db,
+                url,
+                use_proxy=use_proxy,
+                force_refresh=force_refresh,
+                client_ip=request_client_ip(request, client_ip),
+                timeout_seconds=settings.playback_resolve_timeout_seconds if fast else None,
+                proxy_attempts=settings.playback_proxy_attempts if fast else None,
+            ),
         }
     except TimeoutError as error:
         raise HTTPException(status_code=504, detail="Stream resolve timed out. Try again or refresh the proxy pool.") from error
@@ -136,6 +153,8 @@ async def resolve_stream_post(request: Request, payload: YoutubeUrlRequest, db: 
                 use_proxy=payload.use_proxy,
                 force_refresh=payload.force_refresh,
                 client_ip=request_client_ip(request, payload.client_ip),
+                timeout_seconds=settings.playback_resolve_timeout_seconds if payload.fast else None,
+                proxy_attempts=settings.playback_proxy_attempts if payload.fast else None,
             ),
         }
     except TimeoutError as error:
@@ -228,7 +247,15 @@ async def playback(
 ):
     try:
         resolved_client_ip = request_client_ip(request, client_ip)
-        metadata = await resolve_stream(db, url, use_proxy=use_proxy, force_refresh=force_refresh, client_ip=resolved_client_ip)
+        metadata = await resolve_stream(
+            db,
+            url,
+            use_proxy=use_proxy,
+            force_refresh=force_refresh,
+            client_ip=resolved_client_ip,
+            timeout_seconds=settings.playback_resolve_timeout_seconds,
+            proxy_attempts=settings.playback_proxy_attempts,
+        )
     except TimeoutError as error:
         raise HTTPException(status_code=504, detail="Playback stream resolve timed out. Try again or refresh the proxy pool.") from error
     except Exception as error:
@@ -245,7 +272,7 @@ async def playback(
     session = None
     last_error: Exception | None = None
     for attempt in range(2):
-        session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
+        session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"), playback=True)
         try:
             started = time.perf_counter()
             response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
@@ -255,7 +282,7 @@ async def playback(
                 # otherwise working proxy.
                 response.close()
                 await session.close()
-                session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"))
+                session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"), playback=True)
                 response = await session.get(stream_url, headers=stream_fetch_headers(), **request_kwargs)
             response.raise_for_status()
             mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
@@ -266,7 +293,15 @@ async def playback(
             mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
             if attempt == 0 and use_proxy:
                 try:
-                    metadata = await resolve_stream(db, url, use_proxy=True, force_refresh=True, client_ip=resolved_client_ip)
+                    metadata = await resolve_stream(
+                        db,
+                        url,
+                        use_proxy=True,
+                        force_refresh=True,
+                        client_ip=resolved_client_ip,
+                        timeout_seconds=settings.playback_resolve_timeout_seconds,
+                        proxy_attempts=settings.playback_proxy_attempts,
+                    )
                     stream_url = metadata.get("stream_url")
                     if stream_url:
                         continue
