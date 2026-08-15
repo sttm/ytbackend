@@ -39,9 +39,25 @@ It reads both `PRODUCERSCENTER_BACKEND_DATABASE_URL` and Render's standard `DATA
 Render PostgreSQL:
 
 ```txt
-Build Command: pip install -r requirements.txt
-Start Command: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+# Recommended: set Environment to Docker and let Render use backend/Dockerfile.
+# It installs ffmpeg, Deno and yt-dlp-ejs reproducibly.
+
+# If this existing Render service uses Native Runtime instead:
+Build Command: bash render-build.sh
+Start Command: bash render-start.sh
 ```
+
+### Deno and YouTube JavaScript challenges
+
+The backend installs `yt-dlp-ejs` and Deno (2.3+; Docker uses a pinned 2.9.4
+binary). This lets yt-dlp execute the current YouTube player JavaScript needed
+to resolve signatures and `n` parameters. Deno is selected by yt-dlp by default
+when it is available on `PATH`.
+
+It improves normal stream resolution and downloading, but it is **not** a bot
+restriction bypass: a Render datacenter IP can still receive a sign-in, CAPTCHA
+or rate-limit response. Keep using the verified proxy pool and direct-first
+playback; do not put browser cookies or a user API key into the PWA.
 
 Environment:
 
