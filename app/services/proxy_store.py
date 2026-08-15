@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -114,20 +115,28 @@ def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
 
 
 def best_proxies(db: Session, limit: int = 20) -> list[Proxy]:
+    """Return usable proxies in playback-start order.
+
+    A proxy becomes eligible only after real YouTube/audio verification. Among
+    eligible candidates, favour the lowest measured latency first. ``download_ms``
+    is the tie-breaker because it reflects a real Googlevideo byte fetch. Zero
+    or missing measurements are always placed after measured values.
+    """
     now = datetime.utcnow()
+    measured_latency = case((Proxy.latency_ms > 0, Proxy.latency_ms), else_=2_147_483_647)
+    measured_download = case((Proxy.download_ms > 0, Proxy.download_ms), else_=2_147_483_647)
     return (
         db.query(Proxy)
         .filter(Proxy.is_active == True)  # noqa: E712
         .filter(Proxy.is_verified == True)  # noqa: E712
         .filter((Proxy.cooldown_until == None) | (Proxy.cooldown_until < now))  # noqa: E711
         .order_by(
-            (Proxy.download_ms > 0).desc(),
-            Proxy.download_ms.asc(),
+            measured_latency.asc(),
+            measured_download.asc(),
             Proxy.youtube_success.desc(),
             Proxy.last_success_at.desc().nullslast(),
             Proxy.score.desc(),
             Proxy.youtube_fail.asc(),
-            Proxy.latency_ms.asc(),
         )
         .limit(limit)
         .all()
