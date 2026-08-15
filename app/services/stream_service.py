@@ -234,10 +234,22 @@ async def resolve_stream(
     client_ip: str | None = None,
     timeout_seconds: int | None = None,
     proxy_attempts: int | None = None,
+    prefer_proxy: bool = False,
+    allow_direct_fallback: bool = True,
 ) -> dict:
     async with stream_resolve_semaphore:
         return await asyncio.wait_for(
-            asyncio.to_thread(_resolve_stream_locked, db, youtube_url, use_proxy, force_refresh, client_ip, proxy_attempts),
+            asyncio.to_thread(
+                _resolve_stream_locked,
+                db,
+                youtube_url,
+                use_proxy,
+                force_refresh,
+                client_ip,
+                proxy_attempts,
+                prefer_proxy,
+                allow_direct_fallback,
+            ),
             timeout=timeout_seconds or settings.stream_resolve_timeout_seconds,
         )
 
@@ -249,6 +261,8 @@ def _resolve_stream_locked(
     force_refresh: bool = False,
     client_ip: str | None = None,
     proxy_attempts: int | None = None,
+    prefer_proxy: bool = False,
+    allow_direct_fallback: bool = True,
 ) -> dict:
     video_id = _stream_cache_key(youtube_url)
     effective_proxy_attempts = max(1, proxy_attempts or settings.proxy_attempts)
@@ -268,7 +282,7 @@ def _resolve_stream_locked(
 
     errors: list[str] = []
 
-    if settings.direct_first or not use_proxy:
+    if not use_proxy or (settings.direct_first and not prefer_proxy):
         try:
             logger.info("stream resolve direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url, client_ip=client_ip)
@@ -335,7 +349,7 @@ def _resolve_stream_locked(
                     },
                 )
 
-    if not settings.direct_first:
+    if use_proxy and ((not settings.direct_first and not prefer_proxy) or (prefer_proxy and allow_direct_fallback)):
         try:
             logger.info("stream resolve fallback direct attempt video_id=%s", video_id or "-")
             result = extract_best_audio(youtube_url, client_ip=client_ip)
