@@ -17,12 +17,8 @@ MAX_SEARCH_TRACKS = 30
 MAX_SEARCH_CONTAINERS = 10
 MAX_SEARCH_RESULTS = MAX_SEARCH_TRACKS + MAX_SEARCH_CONTAINERS
 AUDIO_FORMAT_SELECTOR = (
-    "bestaudio[acodec^=opus][ext=webm]/"
-    "bestaudio[acodec^=mp4a][ext=m4a]/"
-    "bestaudio[acodec^=aac][ext=m4a]/"
-    "bestaudio[ext=m4a]/"
-    "bestaudio[ext=webm]/"
-    "bestaudio"
+    "bestaudio[ext=m4a][protocol=https]/"
+    "bestaudio[protocol=https]/bestaudio[protocol=http]"
 )
 
 
@@ -101,7 +97,10 @@ def normalized_audio_ext(fmt: dict) -> str:
 def is_audio_format(fmt: dict) -> bool:
     codec = str(fmt.get("acodec") or "").lower()
     vcodec = str(fmt.get("vcodec") or "none").lower()
-    return bool(fmt.get("url")) and bool(codec) and codec != "none" and vcodec == "none"
+    return (
+        bool(fmt.get("url")) and bool(codec) and codec != "none" and vcodec == "none"
+        and fmt.get("protocol", "https") in {"http", "https"}
+    )
 
 
 def is_preferred_audio_format(fmt: dict) -> bool:
@@ -119,9 +118,9 @@ def is_preferred_audio_format(fmt: dict) -> bool:
 def audio_format_score(fmt: dict) -> tuple[int, float, int, int]:
     family = audio_codec_family(fmt)
     ext = str(fmt.get("ext") or "").lower()
-    if family == "opus" and ext == "webm":
+    if family == "aac" and ext in {"m4a", "mp4"}:
         family_score = 300
-    elif family == "aac" and ext in {"m4a", "mp4"}:
+    elif family == "opus" and ext == "webm":
         family_score = 250
     elif ext in {"webm", "m4a"}:
         family_score = 200
@@ -169,7 +168,7 @@ def extract_best_audio(youtube_url: str, proxy_url: str | None = None, client_ip
     if not formats:
         raise RuntimeError("No audio formats found")
 
-    best = max(formats, key=audio_format_score)
+    best = info if is_audio_format(info) else max(formats, key=audio_format_score)
 
     return {
         "video_id": info.get("id"),
@@ -204,9 +203,7 @@ def search_media(query: str, limit: int = 10, mode: str = "youtube-music") -> li
     normalized_mode = (mode or "youtube-music").strip().lower()
     limit = max(1, min(limit, MAX_SEARCH_RESULTS))
     if normalized_mode == "youtube-music":
-        music_items = search_youtube_music(query, limit)
-        if music_items:
-            return music_items
+        return search_youtube_music(query, limit)
 
     provider = "soundcloud" if normalized_mode == "soundcloud" else "youtube"
     prefix = "scsearch" if provider == "soundcloud" else "ytsearch"
@@ -222,16 +219,6 @@ def search_media(query: str, limit: int = 10, mode: str = "youtube-music") -> li
     with yt_dlp.YoutubeDL(opts) as ydl:
         info = ydl.extract_info(f"{prefix}{search_limit}:{query}", download=False)
     entries = info.get("entries") or []
-
-    if normalized_mode == "youtube-music":
-        music_entries = [
-            entry
-            for entry in entries
-            if "topic" in f"{entry.get('channel') or ''} {entry.get('uploader') or ''}".lower()
-            or "music" in f"{entry.get('channel') or ''} {entry.get('uploader') or ''}".lower()
-        ]
-        if music_entries:
-            entries = music_entries
 
     items = [
         {
@@ -266,21 +253,24 @@ def search_youtube(query: str, limit: int = 10) -> list[dict]:
 
 def search_youtube_music(query: str, limit: int = 10) -> list[dict]:
     if YTMusic is None:
-        return []
+        raise RuntimeError("YouTube Music search requires ytmusicapi")
     limit = max(1, min(limit, MAX_SEARCH_RESULTS))
 
+    client = YTMusic()
+    results = client.search(query, filter="songs", limit=MAX_SEARCH_TRACKS * 2)
     try:
-        client = YTMusic()
-        results = client.search(query, filter="songs", limit=MAX_SEARCH_TRACKS)
         album_results = client.search(query, filter="albums", limit=MAX_SEARCH_CONTAINERS)
+    except Exception:
+        album_results = []
+    try:
         playlist_results = client.search(query, filter="playlists", limit=MAX_SEARCH_CONTAINERS)
     except Exception:
-        return []
+        playlist_results = []
 
     items: list[dict] = []
     for entry in results or []:
         video_id = entry.get("videoId")
-        if not video_id:
+        if not video_id or not is_art_track(entry):
             continue
         artists = entry.get("artists") or []
         artist = ", ".join(
@@ -308,6 +298,9 @@ def search_youtube_music(query: str, limit: int = 10) -> list[dict]:
                 "url": f"https://www.youtube.com/watch?v={video_id}",
                 "provider": "youtube",
                 "source": "youtube-music",
+                "kind": "track",
+                "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                "isExplicit": entry.get("isExplicit"),
             }
         )
 
@@ -362,7 +355,11 @@ def search_youtube_music(query: str, limit: int = 10) -> list[dict]:
     containers = [item for item in items if item.get("kind") in {"album", "playlist"}][:MAX_SEARCH_CONTAINERS]
     tracks = [item for item in items if item.get("kind") not in {"album", "playlist"}]
     track_limit = MAX_SEARCH_TRACKS
-    return (containers + tracks[:track_limit])[:limit]
+    return (tracks[:track_limit] + containers)[:limit]
+
+
+def is_art_track(entry: dict) -> bool:
+    return entry.get("videoType") in {"ATV", "MUSIC_VIDEO_TYPE_ATV"}
 
 
 def best_ytmusic_thumbnail(thumbnails: list[dict]) -> str | None:

@@ -1,6 +1,7 @@
 import ssl
 import asyncio
 import time
+from urllib.parse import quote
 
 import aiohttp
 import certifi
@@ -18,7 +19,7 @@ from app.services.proxy_utils import classify_error
 from app.services.stream_service import resolve_stream
 from app.services.search_cache import cached_search_items, store_search_items
 from app.services.track_metadata import enrich_items_with_cached_metadata
-from app.services.youtube import extract_playlist_items, extract_playlist_metadata, search_media
+from app.services.youtube import extract_playlist_items, extract_playlist_metadata, is_art_track, search_media
 
 router = APIRouter()
 settings = get_settings()
@@ -194,13 +195,13 @@ async def search(payload: YoutubeSearchRequest, db: Session = Depends(get_db)):
 
 
 def _is_stale_search_cache(mode: str, items: list[dict], effective_limit: int) -> bool:
-    expected_min = 30 if mode != "youtube-music" else min(effective_limit, 30)
-    if len(items) < expected_min:
-        return True
-    if mode != "youtube-music":
-        return False
-    has_container = any(item.get("kind") in {"album", "playlist"} for item in items)
-    return not has_container
+    if mode == "youtube-music":
+        return any(
+            item.get("kind") not in {"album", "playlist"}
+            and (not is_art_track(item) or "isExplicit" not in item)
+            for item in items
+        )
+    return len(items) < min(effective_limit, 30)
 
 
 @router.post("/playlist")
@@ -298,6 +299,7 @@ async def playback(
                         url,
                         use_proxy=True,
                         force_refresh=True,
+                        prefer_proxy=True,
                         client_ip=resolved_client_ip,
                         timeout_seconds=settings.playback_resolve_timeout_seconds,
                         proxy_attempts=settings.playback_proxy_attempts,
@@ -319,11 +321,11 @@ async def playback(
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
         "X-Track-Id": str(metadata.get("video_id") or ""),
-        "X-Track-Title": str(metadata.get("title") or "online-audio"),
-        "X-Track-Artist": str(metadata.get("uploader") or ""),
+        "X-Track-Title": quote(str(metadata.get("title") or "online-audio"), safe=""),
+        "X-Track-Artist": quote(str(metadata.get("artist") or metadata.get("uploader") or ""), safe=""),
         "X-File-Ext": str(ext),
         "X-PC-Playback-Mode": "resolved-stream",
-        "X-PC-Proxy-Used": str(metadata.get("proxy_used") or ""),
+        "X-PC-Proxy-Used": "true" if metadata.get("proxy_used") else "false",
     }
     for header_name in ("Content-Length", "Content-Range", "Accept-Ranges"):
         value = response.headers.get(header_name)
@@ -404,7 +406,7 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
             mark_proxy_media_failure(db, metadata.get("proxy_used"), error)
             if attempt == 0 and payload.url and payload.use_proxy:
                 try:
-                    metadata = await resolve_stream(db, payload.url, use_proxy=True, force_refresh=True, client_ip=client_ip)
+                    metadata = await resolve_stream(db, payload.url, use_proxy=True, force_refresh=True, prefer_proxy=True, client_ip=client_ip)
                     stream_url = metadata.get("stream_url")
                     if stream_url:
                         continue
@@ -422,8 +424,8 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
         "X-Track-Id": str(metadata.get("video_id") or ""),
-        "X-Track-Title": str(metadata.get("title") or "youtube-audio"),
-        "X-Track-Artist": str(metadata.get("uploader") or ""),
+        "X-Track-Title": quote(str(metadata.get("title") or "youtube-audio"), safe=""),
+        "X-Track-Artist": quote(str(metadata.get("artist") or metadata.get("uploader") or ""), safe=""),
         "X-File-Ext": str(ext),
     }
     # Never advertise yt-dlp's estimated size as HTTP Content-Length. It makes

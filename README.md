@@ -200,6 +200,29 @@ Backend MVP is considered usable only when these flows are stable and bounded by
   - `POST /search` with `{ "query": "...", "mode": "soundcloud", "source": "soundcloud" }`
 - Dashboard must remain responsive while search/stream/download requests are running.
 
+YouTube Music search keeps only confirmed `MUSIC_VIDEO_TYPE_ATV` audio tracks.
+It preserves the original video ID and `isExplicit` flag: Explicit tracks are
+not replaced with Clean recordings, and non-explicit tracks remain available.
+Albums/playlists may follow track results. Empty or failed Music searches do
+not fall back to ordinary YouTube videos. Cached tracks without these version
+fields are refreshed on the next search.
+
+Playback/download prefer a direct HTTP M4A audio format (with other direct audio
+formats as fallback), never an HLS/DASH manifest passed off as an audio file.
+Track title/artist response headers are UTF-8 percent-encoded; clients should
+decode them with `decodeURIComponent` or an equivalent URL decoder.
+
+Install all `requirements.txt` dependencies, including `yt-dlp-ejs`, and keep
+Deno on PATH. These are required for current YouTube extraction, but do not
+guarantee that YouTube accepts the resolver's network address. A bot/sign-in
+error from extraction must be diagnosed on the affected resolver/proxy path.
+
+Backend regression checks (no external network or production database):
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+```
+
 Runtime guardrails:
 
 - Search and playlist extraction run in a worker thread and time out via `PRODUCERSCENTER_BACKEND_SEARCH_TIMEOUT_SECONDS`.
