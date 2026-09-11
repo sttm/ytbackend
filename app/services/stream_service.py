@@ -56,13 +56,13 @@ def _can_reuse_cached_stream(db: Session, row: StreamCache) -> bool:
         return True
 
     proxy = db.query(Proxy).filter(Proxy.proxy_url == proxy_url).first()
-    if proxy is None or not proxy.is_active or not proxy.is_verified:
+    if proxy is None or not proxy.is_active or not proxy.is_verified or proxy.audio_verified_at is None:
         logger.info("stream cache skipped video_id=%s reason=proxy_not_verified", row.video_id)
         return False
     if proxy.cooldown_until and proxy.cooldown_until > now:
         logger.info("stream cache skipped video_id=%s reason=proxy_in_cooldown", row.video_id)
         return False
-    last_good_at = proxy.last_success_at or proxy.last_checked_at
+    last_good_at = proxy.audio_verified_at
     if last_good_at is None or last_good_at < now - timedelta(seconds=settings.proxy_cache_health_seconds):
         logger.info("stream cache skipped video_id=%s reason=proxy_health_stale", row.video_id)
         return False
@@ -310,16 +310,7 @@ def _resolve_stream_locked(
                 logger.info("stream resolve proxy attempt video_id=%s proxy=%s", video_id or "-", proxy.proxy_url)
                 result = extract_best_audio(youtube_url, proxy.proxy_url, client_ip=client_ip)
                 resolve_ms = int((time.perf_counter() - started) * 1000)
-                apply_check_result(
-                    db,
-                    proxy,
-                    {
-                        "status": "verified",
-                        "latency_ms": resolve_ms,
-                        "download_ms": resolve_ms,
-                        "error": "",
-                    },
-                )
+                # Extracting a URL is not a successful audio-byte check.
                 _cache_result(db, youtube_url, result, proxy.proxy_url)
                 result_response = _response_from_result(result, cached=False, proxy_used=proxy.proxy_url)
                 result_response["url"] = youtube_url
@@ -343,7 +334,7 @@ def _resolve_stream_locked(
                     db,
                     proxy,
                     {
-                        "status": "youtube_blocked" if classify_error(error) in {"youtube_bot", "youtube_rate_limit", "captcha"} else "dead",
+                        "status": "youtube_blocked" if classify_error(error) in {"youtube_bot", "youtube_rate_limit", "captcha"} else "timeout" if classify_error(error) == "timeout" else "dead",
                         "latency_ms": proxy.latency_ms,
                         "error": str(error),
                     },

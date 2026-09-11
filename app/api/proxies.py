@@ -205,7 +205,7 @@ async def import_proxy_values(
                 continue
             try:
                 apply_check_result(db, row, result)
-                if result["status"] == "verified":
+                if result["status"] in {"verified", "reachable"}:
                     alive += 1
                 else:
                     dead += 1

@@ -109,7 +109,7 @@ async def check_proxy_fast(proxy_url: str, url: str = PING_URL, timeout: int = 5
     ok, latency_ms, error = await _http_get(proxy_url, url, timeout)
     return {
         "proxy_url": proxy_url,
-        "status": "verified" if ok else "dead",
+        "status": "reachable" if ok else "dead",
         "layer": "fast-ping",
         "latency_ms": latency_ms,
         "error": "" if ok else error,

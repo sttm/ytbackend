@@ -88,6 +88,7 @@ def ensure_schema() -> None:
     proxy_columns = {column["name"] for column in inspector.get_columns("proxies")}
     required_columns = {
         "download_ms": "INTEGER DEFAULT 0",
+        "audio_verified_at": "TIMESTAMP NULL",
     }
     stream_columns = {column["name"] for column in inspector.get_columns("stream_cache")} if "stream_cache" in inspector.get_table_names() else set()
     stream_required_columns = {

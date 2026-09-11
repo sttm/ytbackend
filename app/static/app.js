@@ -281,8 +281,9 @@ $("fetch-sources").addEventListener("click", async (event) => {
 
 $("check-batch").addEventListener("click", async (event) => {
   await withButtonBusy(event.currentTarget, "Checking...", async () => {
-    logStep("Batch proxy check start", { limit: 20, status: "new" });
-    const result = await api("/api/proxies/check-batch?limit=20&status=new", { method: "POST", body: "{}" });
+    const status = $("status-filter").value || "new";
+    logStep("Batch proxy check start", { limit: 20, status });
+    const result = await api(`/api/proxies/check-batch?limit=20&status=${encodeURIComponent(status)}`, { method: "POST", body: "{}" });
     setImportOutput("Batch check complete.", result);
     await refresh();
   });

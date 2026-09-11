@@ -107,6 +107,7 @@ def mark_proxy_media_success(db: Session, proxy_url: str | None, elapsed_ms: int
         proxy,
         {
             "status": "verified",
+            "layer": "media-fetch",
             "latency_ms": proxy.latency_ms,
             "download_ms": elapsed_ms,
             "error": "",
@@ -286,7 +287,6 @@ async def playback(
                 session, request_kwargs = client_session_for_proxy(metadata.get("proxy_used"), playback=True)
                 response = await session.get(stream_url, headers=stream_fetch_headers(), **request_kwargs)
             response.raise_for_status()
-            mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
             break
         except Exception as error:
             last_error = error
@@ -333,8 +333,12 @@ async def playback(
             headers[header_name] = value
 
     async def chunks():
+        verified = False
         try:
             async for chunk in response.content.iter_chunked(1024 * 256):
+                if chunk and not verified:
+                    mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
+                    verified = True
                 yield chunk
         finally:
             response.close()
@@ -398,7 +402,6 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
             started = time.perf_counter()
             response = await session.get(stream_url, headers=upstream_headers, **request_kwargs)
             response.raise_for_status()
-            mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
             break
         except Exception as error:
             last_error = error
@@ -439,8 +442,12 @@ async def download(request: Request, payload: YoutubeUrlRequest, db: Session = D
             headers[header_name] = value
 
     async def chunks():
+        verified = False
         try:
             async for chunk in response.content.iter_chunked(1024 * 512):
+                if chunk and not verified:
+                    mark_proxy_media_success(db, metadata.get("proxy_used"), int((time.perf_counter() - started) * 1000))
+                    verified = True
                 yield chunk
         finally:
             response.close()

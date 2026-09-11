@@ -71,6 +71,8 @@ def create_proxy_if_missing(db: Session, raw_proxy: str, source: str = "manual",
 def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
     now = datetime.utcnow()
     status = result["status"]
+    if status == "verified" and result.get("layer") not in {"audio-byte", "media-fetch"}:
+        status = "reachable"
     proxy.status = status
     proxy.latency_ms = result.get("latency_ms") or proxy.latency_ms
     proxy.download_ms = result.get("download_ms") or proxy.download_ms
@@ -79,6 +81,7 @@ def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
     proxy.updated_at = now
 
     if status == "verified":
+        proxy.audio_verified_at = now
         proxy.is_verified = True
         proxy.is_active = True
         proxy.success_count += 1
@@ -88,6 +91,11 @@ def apply_check_result(db: Session, proxy: Proxy, result: dict) -> Proxy:
         latency_penalty = max(proxy.download_ms or proxy.latency_ms, 1)
         proxy.score = min(1000, 500 + proxy.youtube_success * 25 + int(100000 / latency_penalty))
         proxy.cooldown_until = None
+    elif status == "reachable":
+        # HTTP reachability alone says nothing about YouTube audio access.
+        proxy.is_active = True
+        proxy.is_verified = False
+        proxy.audio_verified_at = None
     elif status in {"youtube_blocked", "captcha"}:
         proxy.is_verified = False
         proxy.is_active = True
@@ -129,6 +137,7 @@ def best_proxies(db: Session, limit: int = 20) -> list[Proxy]:
         db.query(Proxy)
         .filter(Proxy.is_active == True)  # noqa: E712
         .filter(Proxy.is_verified == True)  # noqa: E712
+        .filter(Proxy.audio_verified_at.is_not(None))
         .filter((Proxy.cooldown_until == None) | (Proxy.cooldown_until < now))  # noqa: E711
         .order_by(
             measured_latency.asc(),

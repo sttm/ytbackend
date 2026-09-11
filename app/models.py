@@ -34,6 +34,7 @@ class Proxy(Base):
     last_error: Mapped[str] = mapped_column(Text, default="")
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    audio_verified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     cooldown_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

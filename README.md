@@ -223,6 +223,16 @@ Backend regression checks (no external network or production database):
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
+Proxy verification distinguishes `reachable` (a successful HTTP ping) from
+`verified` (YouTube extraction plus an audio-byte fetch). Startup adds the
+nullable `proxies.audio_verified_at` column to existing databases. Legacy
+`verified` rows without that evidence are excluded from resolution and cached
+streams until checked again. In the dashboard select the `verified` or
+`reachable` status filter and run the batch check; it performs the full audio
+check for the selected status. A successful URL resolution alone does not
+renew audio verification. Failed connections still require working proxies;
+this change cannot make an unreachable proxy or a bot-blocked direct IP work.
+
 Runtime guardrails:
 
 - Search and playlist extraction run in a worker thread and time out via `PRODUCERSCENTER_BACKEND_SEARCH_TIMEOUT_SECONDS`.
